@@ -1988,8 +1988,8 @@ function initScrollToTop() {
    ========================================================================== */
 
 // Email Recipient Definitions
-const EMAIL_TO = "arun.kumar@classicpvt.com";
-const EMAIL_CC = "tahir.ali@classicpvt.com";
+const EMAIL_TO = "managementteam@classicpvt.com" ,"serviceteam@classicpvt.com";
+const EMAIL_CC = "asifsabir@classicpvt.com" ,"mansoorchemban@classicpvt.com", "noushad.manikunnath@classicpvt.com";
 
 // Email body text (single source of truth: used for popup preview and the email itself)
 const EMAIL_BODY_PARAGRAPHS = [
