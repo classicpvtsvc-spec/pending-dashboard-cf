@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classic Service & Maintenance - Pending Job Overview</title>
+    <meta name="theme-color" content="#111827">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <!-- LOGIN PAGE STRUCTURE -->
+    <div id="login-page" class="login-wrapper">
+        <div class="bg-wave-top"></div>
+        <div class="bg-wave-bottom"></div>
+
+        <div class="login-container-split">
+            <div class="login-hero">
+                <div class="hero-content">
+                    <div class="company-logo-container">
+                        <img src="logo.png" alt="Company Logo" class="company-logo">
+                    </div>
+                    <h1>Pending Job Data<br>Dashboard</h1>
+                    <div class="hero-underline"></div>
+                    <p class="hero-subtitle">Follow up &nbsp;|&nbsp; Faster Actions &nbsp;|&nbsp; Close without delay</p>
+                </div>
+                <div class="hero-watermark">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                </div>
+            </div>
+
+            <div class="login-card-wrapper">
+                <div class="login-card">
+                    <div class="user-avatar-badge">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                            <circle cx="12" cy="7" r="4"/>
+                        </svg>
+                    </div>
+                    <h2 class="login-title">Portal Login</h2>
+                    <p class="login-instruction">Please enter your credentials to access dashboard</p>
+
+                    <form id="login-form">
+                        <div class="input-field-group">
+                            <span class="input-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                            </span>
+                            <input type="text" id="username" placeholder="Username" required autocomplete="username">
+                        </div>
+
+                        <div class="input-field-group">
+                            <span class="input-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                            </span>
+                            <input type="password" id="password" placeholder="Password" required autocomplete="current-password">
+                            <button type="button" class="btn-toggle-pw" id="toggle-pw" aria-label="Toggle Password Visibility">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            </button>
+                        </div>
+
+                        <p id="login-error" style="color: red; font-size: 0.8rem; display: none; margin-bottom: 1rem; text-align: center;">Invalid username or password.</p>
+
+                        <button type="submit" class="btn-login-submit">
+                            Sign In
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                        </button>
+                    </form>
+
+                    <div class="login-footer-tag">
+                        <span class="tag-line"></span>
+                        <span class="tag-text">CLASSIC SERVICE DASHBOARD</span>
+                        <span class="tag-line"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN APP CONTAINER -->
+    <div id="app-container" style="display: none;">
+        <nav class="top-nav">
+            <div class="nav-left">
+                <div class="logo-area">
+                    <img src="logo.png" alt="Classic Logo" class="nav-logo-img">
+                    <div class="brand-text-block">
+                        <span class="brand-title">CLASSIC</span>
+                        <span class="brand-subtitle">SERVICE & MAINTENANCE</span>
+                    </div>
+                </div>
+                <div class="nav-divider"></div>
+                <div class="user-badge">
+                    Welcome, <span id="user-display-name">Admin</span>
+                    <span id="user-display-role" class="role-badge">Admin</span>
+                </div>
+            </div>
+
+            <div class="nav-controls">
+                <div class="filter-group">
+                    <label for="branch-filter">Branch:</label>
+                    <select id="branch-filter" class="select-input">
+                        <option value="ALL">All Branches</option>
+                    </select>
+                </div>
+
+                <div id="admin-upload-controls" class="admin-only-section" style="display: none; align-items: center; gap: 0.5rem;">
+                    <div class="upload-btn-wrapper">
+                        <button class="btn-upload" onclick="document.getElementById('registration-file-input').click()">
+                            ⇫ Registration
+                        </button>
+                        <input type="file" id="registration-file-input" accept=".xlsx, .xls, .csv, .txt, .tsv" style="display: none;">
+                    </div>
+                    <div class="upload-btn-wrapper">
+                        <button class="btn-upload" onclick="document.getElementById('closure-file-input').click()">
+                            ⇫ Closure
+                        </button>
+                        <input type="file" id="closure-file-input" accept=".xlsx, .xls, .csv, .txt, .tsv" style="display: none;">
+                    </div>
+                </div>
+                <div class="upload-btn-wrapper">
+                    <button class="btn-upload" onclick="document.getElementById('excel-file-input').click()">
+                        ⇫ Upload Pending Data
+                    </button>
+                    <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv, .txt, .tsv" style="display: none;">
+                </div>
+
+                <button class="btn-action" id="btn-export-excel">Export Excel</button>
+                <button class="btn-action" id="btn-user-mgmt" style="display: none;">User Mgmt</button>
+<!-- Inside <div class="nav-controls"> or <div class="header-nav-buttons"> -->
+<button type="button" class="btn-action" id="btn-send-email" onclick="handleSendEmailClick()">
+    📧 Email
+</button>
+                <button class="btn-logout" id="btn-logout">Logout</button>
+            </div>
+        </nav>
+
+        <div class="dashboard-content">
+            <div class="page-title-banner">
+                <h2>Pending Job Analysis Dashboard</h2>
+                <p>Live Overview of Service Request Statuses & Technician Load</p>
+                <div id="last-updated-info" class="last-updated-info"></div>
+            </div>
+
+            <!-- KPI SUMMARY CARDS -->
+            <div class="kpi-grid">
+                <div class="kpi-card info" onclick="filterDetailedTable('ALL', 'Total Pending Jobs')">
+                    <div class="kpi-title">Total Pending Jobs</div>
+                    <div class="kpi-value" id="kpi-ttl-pend">0</div>
+                    <div class="kpi-sub">Total records loaded</div>
+                </div>
+                <div class="kpi-card danger" onclick="filterDetailedTable('ABOVE_5', 'Pending Over 5 Days')">
+                    <div class="kpi-title">Pending Over 5 Days</div>
+                    <div class="kpi-value" id="kpi-above-5">0</div>
+                    <div class="kpi-sub"><span id="kpi-above-5-pct">0%</span> of total jobs</div>
+                </div>
+                <div class="kpi-card warning" onclick="filterDetailedTable('PARTS_PEND', 'Parts Pending Jobs')">
+                    <div class="kpi-title">Parts Pending Jobs</div>
+                    <div class="kpi-value" id="kpi-parts-pend">0</div>
+                    <div class="kpi-sub"><span id="kpi-parts-pend-pct">0%</span> of total jobs</div>
+                </div>
+                <div class="kpi-card success" onclick="filterDetailedTable('EXCEPT_PARTS', 'Pending Except Parts')">
+                    <div class="kpi-title">Pending Except Parts</div>
+                    <div class="kpi-value" id="kpi-except-parts">0</div>
+                    <div class="kpi-sub"><span id="kpi-except-parts-pct">0%</span> of total jobs</div>
+                </div>
+                <div class="kpi-card info" onclick="filterDetailedTable('PARTS_AVAIL', 'Parts Available Jobs')">
+                    <div class="kpi-title">Parts Available Jobs</div>
+                    <div class="kpi-value" id="kpi-parts-avail">0</div>
+                    <div class="kpi-sub">Parts in stock ready</div>
+                </div>
+            </div>
+
+            <!-- 3-COLUMN BREAKDOWNS -->
+            <div class="sub-dashboards-three-col">
+                <div class="summary-card">
+                    <div class="card-header flex-between">
+                        <h3>Pending Reason Summary</h3>
+                        <button class="btn-capture-table" onclick="captureTableToClipboard('table-pend-reason')" title="Capture Image">📷</button>
+                    </div>
+                    <div class="table-wrapper">
+                        <table id="table-pend-reason">
+                            <thead>
+                                <tr>
+                                    <th>Pending Reason</th>
+                                    <th class="text-right">Count</th>
+                                    <th class="text-right">%</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="summary-card">
+                    <div class="card-header flex-between">
+                        <h3>Warranty Type Breakdown</h3>
+                        <button class="btn-capture-table" onclick="captureTableToClipboard('table-warranty')" title="Capture Image">📷</button>
+                    </div>
+                    <div class="table-wrapper">
+                        <table id="table-warranty">
+                            <thead>
+                                <tr>
+                                    <th>Warranty Type</th>
+                                    <th class="text-right">Count</th>
+                                    <th class="text-right">%</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="summary-card">
+                    <div class="card-header flex-between">
+                        <h3>Age Wise Pending Jobs - Brand Wise</h3>
+                        <button class="btn-capture-table" onclick="captureTableToClipboard('table-age-brand')" title="Capture Image">📷</button>
+                    </div>
+                    <div class="table-wrapper">
+                        <table id="table-age-brand">
+                            <thead>
+                                <tr>
+                                    <th>Brand</th>
+                                    <th class="text-center">0~02</th>
+                                    <th class="text-center">03~04</th>
+                                    <th class="text-center">05~06</th>
+                                    <th class="text-center">07~09</th>
+                                    <th class="text-center">10~14</th>
+                                    <th class="text-center">15~25</th>
+                                    <th class="text-center">>25</th>
+                                    <th class="text-center">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- BRANCH & TECHNICIAN MATRICES -->
+            <div class="sub-dashboards-grid">
+                <div class="summary-card">
+                    <div class="card-header flex-between">
+                        <h3>Age Wise Pending Jobs - Branch Wise</h3>
+                        <button class="btn-capture-table" onclick="captureTableToClipboard('table-age-branch')" title="Capture Image">📷</button>
+                    </div>
+                    <div class="table-wrapper">
+                        <table id="table-age-branch">
+                            <thead>
+                                <tr>
+                                    <th>Branch</th>
+                                    <th class="text-center">0~02</th>
+                                    <th class="text-center">03~04</th>
+                                    <th class="text-center">05~06</th>
+                                    <th class="text-center">07~09</th>
+                                    <th class="text-center">10~14</th>
+                                    <th class="text-center">15~25</th>
+                                    <th class="text-center">>25</th>
+                                    <th class="text-center">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sub-dashboards-grid">
+                <div class="summary-card">
+                    <div class="card-header flex-between">
+                        <h3>Age Wise Pending Jobs - Technician Wise</h3>
+                        <button class="btn-capture-table" onclick="captureTechTableToClipboard()" title="Capture Image">📷</button>
+                    </div>
+                    <div class="table-wrapper">
+                        <table id="table-age-tech">
+                            <thead>
+                                <tr>
+                                    <th>Technician</th>
+                                    <th class="text-center">0~02</th>
+                                    <th class="text-center">03~04</th>
+                                    <th class="text-center">05~06</th>
+                                    <th class="text-center">07~09</th>
+                                    <th class="text-center">10~14</th>
+                                    <th class="text-center">15~25</th>
+                                    <th class="text-center">>25</th>
+                                    <th class="text-center">Total</th>
+                                    <th class="text-center action-col">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ADMIN DAILY REGISTRATION & CLOSING SECTION -->
+            <div id="admin-daily-analytics-section" class="sub-dashboards-grid admin-only-section" style="display: none;">
+<div class="summary-card">
+<div class="card-header flex-between">
+    <h3>Daily Registration vs Closing</h3>
+    <div class="chart-header-actions">
+        <div id="graph-filter-container" class="brand-filter-container"></div>
+        <button type="button" id="btn-capture-graph" class="btn-capture-table" title="Capture Image">📷</button>
+    </div>
+</div>
+    <!-- Graph Canvas Container -->
+    <div style="position: relative; height: 320px; width: 100%;">
+        <canvas id="regCloseChart"></canvas>
+    </div>
+</div>
+
+                <div class="sub-dashboards-three-col" style="grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="summary-card">
+                        <div class="card-header flex-between">
+                            <h3>Daily Job Registration</h3>
+                            <button class="btn-capture-table" onclick="captureTableToClipboard('table-daily-registration')" title="Capture Image">📷</button>
+                        </div>
+                        <div class="table-wrapper">
+                            <table id="table-daily-registration">
+                                <thead>
+                                    <tr>
+                                        <th>Date (RECEIPT_DT)</th>
+                                        <th class="text-right">Total Registered</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="summary-card">
+                        <div class="card-header flex-between">
+                            <h3>Daily Job Closing</h3>
+                            <button class="btn-capture-table" onclick="captureTableToClipboard('table-daily-closing')" title="Capture Image">📷</button>
+                        </div>
+                        <div class="table-wrapper">
+                            <table id="table-daily-closing">
+                                <thead>
+                                    <tr>
+                                        <th>Date (CLOSING_DATE)</th>
+                                        <th class="text-right">Total Closed</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sub-dashboards-three-col" style="grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="summary-card">
+                        <div class="card-header flex-between">
+                            <h3>Daily Registration (Brand Wise)</h3>
+                            <button class="btn-capture-table" onclick="captureTableToClipboard('table-daily-registration-brand')" title="Capture Image">📷</button>
+                        </div>
+                        <div class="table-wrapper">
+                            <table id="table-daily-registration-brand">
+                                <thead></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="summary-card">
+                        <div class="card-header flex-between">
+                            <h3>Daily Job Closing (Brand Wise)</h3>
+                            <button class="btn-capture-table" onclick="captureTableToClipboard('table-daily-closing-brand')" title="Capture Image">📷</button>
+                        </div>
+                        <div class="table-wrapper">
+                            <table id="table-daily-closing-brand">
+                                <thead></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DETAILED OVERVIEW TABLE -->
+            <div class="detailed-dashboard-section" id="detailed-section">
+                <div class="card-header flex-between">
+                    <div>
+                        <h3>Detailed Job Overview</h3>
+                        <span class="filter-subtitle" id="detailed-filter-label">Showing: Total Pending Jobs</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span class="table-info-badge">Total Records: <strong id="detailed-record-count">0</strong></span>
+                        <button class="btn-capture-table" onclick="captureTableToClipboard('table-detailed', 'current')" title="Capture Image">📷</button>
+                    </div>
+                </div>
+                <div class="table-wrapper sticky-header">
+                    <table id="table-detailed">
+                        <thead>
+                            <tr>
+                                <th>Job No</th>
+                                <th>Branch</th>
+                                <th class="text-right">Days</th>
+                                <th>Model</th>
+                                <th>Brand</th>
+                                <th>Technician</th>
+                                <th>Pend Reason</th>
+                                <th>P-Status 1</th>
+                                <th>P-Status 2</th>
+                                <th>P-Status 3</th>
+                                <th>P-Status 4</th>
+                                <th>P-Status 5</th>
+                                <th>P-Status 6</th>
+                                <th>P-Status 7</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- USER MANAGEMENT MODAL -->
+    <div id="user-mgmt-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>User Management</h3>
+                <button class="btn-close" id="btn-close-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="user-form">
+                    <input type="hidden" id="user-edit-index" value="-1">
+                    <div class="user-form-grid">
+                        <div class="input-field-group">
+                            <input type="text" id="um-username" placeholder="Username" required>
+                        </div>
+                        <div class="input-field-group">
+                            <input type="text" id="um-password" placeholder="Password" required>
+                        </div>
+                        <div class="input-field-group">
+                            <select id="um-role" class="select-input" style="width: 100%;">
+                                <option value="Supervisor">Supervisor</option>
+                                <option value="Manager">Manager</option>
+                                <option value="Admin">Admin</option>
+                            </select>
+                        </div>
+                        <div class="input-field-group">
+                            <input type="text" id="um-branch" placeholder="Branch (or ALL)" required>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn-action" id="btn-save-user" style="background-color: var(--primary-green); color: white;">Save User</button>
+                            <button type="button" class="btn-action" id="btn-cancel-user-edit" style="display: none;">Cancel</button>
+                        </div>
+                    </div>
+                </form>
+
+                <hr class="modal-divider">
+
+                <div class="modal-table-wrapper">
+                    <table id="table-users">
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>Password</th>
+                                <th>Role</th>
+                                <th>Branch</th>
+                                <th class="text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JOB CARD PREVIEW MODAL -->
+    <div id="job-card-modal" class="modal-overlay" style="display: none;">
+        <div class="job-card-modal-container">
+            <div class="job-card-modal-header">
+                <h3>Job Card Overview</h3>
+                <div class="job-card-modal-actions">
+                    <button class="btn-copy-card" id="btn-copy-card-img">📋 Copy Card Image</button>
+                    <button class="btn-close" id="btn-close-job-card">&times;</button>
+                </div>
+            </div>
+            <div class="job-card-modal-body">
+                <div id="job-card-render-area" class="job-card-container">
+                    <div class="job-card-header">
+                        <span>CLASSIC SERVICE JOB SHEET</span>
+                        <span class="job-card-brand-tag" id="jc-brand-badge">CLASSIC</span>
+                    </div>
+                    <table class="job-card-table">
+                        <tr>
+                            <td class="jc-label">Job Age (Days)</td>
+                            <td class="jc-value danger-text" id="jc-age-days">-</td>
+                        </tr>
+                        <tr>
+                            <td class="jc-label">Technician Name</td>
+                            <td class="jc-value bold" id="jc-technician">-</td>
+                        </tr>
+                        <tr>
+                            <td class="jc-label">Brand</td>
+                            <td class="jc-value" id="jc-brand">-</td>
+                        </tr>
+                        <tr>
+                            <td class="jc-label">Receipt / Job No</td>
+                            <td class="jc-value bold" id="jc-rcpt-no">-</td>
+                        </tr>
+                        <tr>
+                            <td class="jc-label">Customer Name</td>
+                            <td class="jc-value" id="jc-user-name">-</td>
+                        </tr>
+                        <tr>
+                            <td class="jc-label">Home Phone / Tel</td>
+                            <td class="jc-value" id="jc-home-tel">-</td>
+                        </tr>
+                        <tr>
+                            <td class="jc-label">Mobile Number</td>
+                            <td class="jc-value" id="jc-mobile-no">-</td>
+                        </tr>
+                        <tr>
+                            <td class="jc-label">Model Code</td>
+                            <td class="jc-value" id="jc-model-cd">-</td>
+                        </tr>
+                        <tr>
+                            <td class="jc-label">Pending Reason</td>
+                            <td class="jc-value danger-text" id="jc-pend-reason">-</td>
+                        </tr>
+                    </table>
+
+                    <div class="job-card-section-title">CUSTOMER & SERVICE REMARKS</div>
+                    <table class="job-card-table">
+                        <tr>
+                            <td class="jc-label">Customer Remark</td>
+                            <td class="jc-value jc-text-wrap" id="jc-cust-remark">-</td>
+                        </tr>
+                        <tr>
+                            <td class="jc-label">Reception Remark</td>
+                            <td class="jc-value jc-text-wrap" id="jc-rcpt-remark">-</td>
+                        </tr>
+                        <tr>
+                            <td class="jc-label">Technician Remark</td>
+                            <td class="jc-value jc-text-wrap" id="jc-tech-remark">-</td>
+                        </tr>
+                    </table>
+
+                    <div class="job-card-section-title">REQUIRED SPARE PARTS</div>
+                    <table class="job-card-table parts-table">
+                        <colgroup>
+                            <col class="parts-col-sno">
+                            <col class="parts-col-code">
+                            <col class="parts-col-status">
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th class="text-center">S.No</th>
+                                <th>Part Code / Number</th>
+                                <th class="text-center">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="jc-parts-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCROLL TO TOP BUTTON -->
+    <button id="btn-scroll-top" class="scroll-top-btn" title="Go to top">
+        <img src="top.png" alt="Go to top">
+    </button>
+
+    <script src="app.js"></script>
+</body>
+</html>
