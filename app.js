@@ -5,7 +5,7 @@
 // User Database Configuration
 let USERS = [
     { username: 'Arun', password: '1234', role: 'Admin', branch: 'ALL' },
-    { username: 'Yasir', password: '1234', role: 'Manager', branch: 'ALL' },
+    { username: 'Yasir', password: '1234', role: 'Admin', branch: 'ALL' },
     { username: 'Dibil', password: '1234', role: 'Supervisor', branch: 'Jeddah' },
     { username: '1891', password: '1891', role: 'Supervisor', branch: 'Al Kharj' },
     { username: '2651', password: '2651', role: 'Supervisor', branch: 'Hassa' },
