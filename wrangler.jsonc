@@ -1,0 +1,16 @@
+{
+  "name": "pending-dashboard",
+  "main": "worker.js",
+  "compatibility_date": "2025-09-01",
+  "assets": {
+    "directory": "./",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "kv_namespaces": [
+    {
+      "binding": "DASH_KV",
+      "id": "ffb7f8c781ea4e119b2ac29811ab3cb7"
+    }
+  ]
+}
