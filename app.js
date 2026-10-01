@@ -1998,7 +1998,7 @@ const EMAIL_BODY_PARAGRAPHS = [
     "Kindly requesting you all to mandatory apply the Pre-screening and triage for all the jobs and request the parts from the day 1",
     "Use the Pending Job Data Dashboard to check the abnormal pending from your branches."
 ];
-const EMAIL_SIGNATURE = ["Regards,", "Service & Maintenance Dashboard"];
+const EMAIL_SIGNATURE = ["Take Action and clear maximum jobs"];
 
 // Sections captured as images, in the order they appear in the email
 const EMAIL_CAPTURE_SECTIONS = [
