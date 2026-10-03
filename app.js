@@ -45,11 +45,12 @@ const PERM_DEFS = [
     { key: 'dailyClose',     label: 'Daily Job Closing' },
     { key: 'dailyRegBrand',  label: 'Daily Registration (Brand Wise)' },
     { key: 'dailyCloseBrand',label: 'Daily Job Closing (Brand Wise)' },
+    { key: 'dailyCloseTech', label: 'Daily Closing - Tech Wise' },
     { key: 'detailed',       label: 'Detailed Job Overview table' },
     { key: 'export',         label: 'Export Excel button' }
 ];
 const PERM_KEYS = PERM_DEFS.map(p => p.key);
-const DAILY_PERM_KEYS = ['graph', 'dailyReg', 'dailyClose', 'dailyRegBrand', 'dailyCloseBrand'];
+const DAILY_PERM_KEYS = ['graph', 'dailyReg', 'dailyClose', 'dailyRegBrand', 'dailyCloseBrand', 'dailyCloseTech'];
 const DEFAULT_PERMS = PERM_KEYS.filter(k => !DAILY_PERM_KEYS.includes(k));
 
 function normalizeUser(u) {
@@ -90,6 +91,7 @@ function applyPermissions() {
         g.classList.toggle('single', visible.length === 1);
     });
     syncAgeTableHeights();
+    if (typeof buildQuickNav === 'function') buildQuickNav();
 }
 
 /** Technician table gets the same height as the Branch table (scrolls if more rows). */
@@ -186,6 +188,7 @@ function showAppFor(user) {
     document.getElementById('login-page').style.display = 'none';
     document.getElementById('app-container').style.display = 'block';
     setupUserSession();
+    if (typeof refreshProfileHeader === 'function') refreshProfileHeader();
     loadDefaultDataFile();
 }
 
@@ -424,6 +427,7 @@ function buildClosureData(headers, rows) {
     const closeIdx = getColIndex(headers, ['CLOSING_DATE', 'CLOSING_DT', 'CLOSE_DATE'], 0);
     const brandIdx = getColIndex(headers, ['BRAND_NAME', 'BRAND', 'BRANCH NAME'], 1);
     const branchIdx = getColIndex(headers, ['BRANCH_NAME', 'BRANCH', 'BRANCH NAME'], 2);
+    const techIdx = getColIndex(headers, ['TECHNICIAN_JOB_COMPLETED', 'TECHNICIAN_COMPLETED', 'TECHNICIAN_NAME', 'TECHNICIAN'], -1);
 
     closureData = [];
     rows.forEach(row => {
@@ -436,7 +440,7 @@ function buildClosureData(headers, rows) {
             const formattedDate = `${year}-${month}-${day}`;
             const brand = getRowVal(row, brandIdx) || 'Unknown';
             const branch = getRowVal(row, branchIdx) || 'Unknown';
-            closureData.push({ date: formattedDate, brand: brand, branch: branch });
+            closureData.push({ date: formattedDate, brand: brand, branch: branch, tech: getRowVal(row, techIdx) || 'Unknown' });
         }
     });
 
@@ -452,13 +456,22 @@ function formatDateToDDMM(isoDateStr) {
     return isoDateStr;
 }
 
-function renderMatrixTable(dataset, tableContainerId, rowLabel = 'Branch') {
+function fmtAvg(v) {
+    return Number.isInteger(v) ? String(v) : v.toFixed(1);
+}
+
+/**
+ * Daily matrix table (rows x dates) with a trailing "Average" column
+ * (row total / number of dates shown). Rows are sorted by Average, high to low.
+ * rowKey: which field of each record is the row (branch / brand / tech).
+ */
+function renderMatrixTable(dataset, tableContainerId, rowLabel = 'Branch', rowKey = 'branch', truncateNames = false) {
     const tableElem = document.getElementById(tableContainerId);
     if (!tableElem) return;
 
     // Daily tables always show the complete dataset. The graph Brand filter
     // applies only to the graph, not to these tables.
-    const rows = Array.from(new Set(dataset.map(i => i.branch || 'Unknown')));
+    const rows = Array.from(new Set(dataset.map(i => i[rowKey] || 'Unknown')));
     const dates = Array.from(new Set(dataset.map(i => i.date))).sort();
 
     const matrix = {};
@@ -468,24 +481,24 @@ function renderMatrixTable(dataset, tableContainerId, rowLabel = 'Branch') {
     });
 
     dataset.forEach(item => {
-        const row = item.branch || 'Unknown';
+        const row = item[rowKey] || 'Unknown';
         if (matrix[row] && matrix[row][item.date] !== undefined) {
             matrix[row][item.date]++;
         }
     });
 
-    // Sort rows high-to-low using the latest date count.
-    const lastDate = dates.length ? dates[dates.length - 1] : null;
-    rows.sort((a, b) => {
-        const diff = (lastDate ? matrix[b][lastDate] : 0) - (lastDate ? matrix[a][lastDate] : 0);
-        return diff || a.localeCompare(b);
-    });
+    const avgOf = row => dates.length ? dates.reduce((sum, d) => sum + matrix[row][d], 0) / dates.length : 0;
+    const avgs = {};
+    rows.forEach(r => { avgs[r] = avgOf(r); });
+
+    // Sort rows by Average, high to low.
+    rows.sort((a, b) => (avgs[b] - avgs[a]) || a.localeCompare(b));
 
     let theadHtml = `<thead><tr><th>${rowLabel}</th>`;
     dates.forEach(d => {
         theadHtml += `<th class="text-center">${formatDateToDDMM(d)}</th>`;
     });
-    theadHtml += '</tr></thead>';
+    theadHtml += '<th class="text-center avg-col">Average</th></tr></thead>';
 
     const totals = {};
     dates.forEach(d => {
@@ -494,20 +507,23 @@ function renderMatrixTable(dataset, tableContainerId, rowLabel = 'Branch') {
 
     let tbodyHtml = '<tbody>';
     rows.forEach(row => {
-        tbodyHtml += `<tr><td class="bold">${row}</td>`;
+        const safe = escapeEmailHtml(row);
+        const cellCls = truncateNames ? 'bold name-cell' : 'bold';
+        tbodyHtml += `<tr><td class="${cellCls}" title="${safe}">${safe}</td>`;
         dates.forEach(d => {
             const val = matrix[row][d];
             tbodyHtml += `<td class="text-center">${val > 0 ? val : ''}</td>`;
         });
-        tbodyHtml += '</tr>';
+        tbodyHtml += `<td class="text-center bold avg-col">${fmtAvg(avgs[row])}</td></tr>`;
     });
 
     if (dates.length) {
+        const grand = dates.reduce((sum, d) => sum + totals[d], 0);
         tbodyHtml += '<tr class="daily-total-row"><td class="bold">Total</td>';
         dates.forEach(d => {
             tbodyHtml += `<td class="text-center bold">${totals[d] > 0 ? totals[d] : ''}</td>`;
         });
-        tbodyHtml += '</tr>';
+        tbodyHtml += `<td class="text-center bold avg-col">${fmtAvg(grand / dates.length)}</td></tr>`;
     }
 
     tbodyHtml += '</tbody>';
@@ -515,63 +531,7 @@ function renderMatrixTable(dataset, tableContainerId, rowLabel = 'Branch') {
 }
 
 function renderBrandMatrixTable(dataset, tableContainerId) {
-    const tableElem = document.getElementById(tableContainerId);
-    if (!tableElem) return;
-
-    const rows = Array.from(new Set(dataset.map(i => i.brand || 'Unknown')));
-    const dates = Array.from(new Set(dataset.map(i => i.date))).sort();
-
-    const matrix = {};
-    rows.forEach(row => {
-        matrix[row] = {};
-        dates.forEach(d => { matrix[row][d] = 0; });
-    });
-
-    dataset.forEach(item => {
-        const row = item.brand || 'Unknown';
-        if (matrix[row] && matrix[row][item.date] !== undefined) {
-            matrix[row][item.date]++;
-        }
-    });
-
-    // Sort brands high-to-low using the latest date count.
-    const lastDate = dates.length ? dates[dates.length - 1] : null;
-    rows.sort((a, b) => {
-        const diff = (lastDate ? matrix[b][lastDate] : 0) - (lastDate ? matrix[a][lastDate] : 0);
-        return diff || a.localeCompare(b);
-    });
-
-    let theadHtml = '<thead><tr><th>Brand</th>';
-    dates.forEach(d => {
-        theadHtml += `<th class="text-center">${formatDateToDDMM(d)}</th>`;
-    });
-    theadHtml += '</tr></thead>';
-
-    const totals = {};
-    dates.forEach(d => {
-        totals[d] = dataset.reduce((sum, item) => sum + (item.date === d ? 1 : 0), 0);
-    });
-
-    let tbodyHtml = '<tbody>';
-    rows.forEach(row => {
-        tbodyHtml += `<tr><td class="bold">${row}</td>`;
-        dates.forEach(d => {
-            const val = matrix[row][d];
-            tbodyHtml += `<td class="text-center">${val > 0 ? val : ''}</td>`;
-        });
-        tbodyHtml += '</tr>';
-    });
-
-    if (dates.length) {
-        tbodyHtml += '<tr class="daily-total-row"><td class="bold">Total</td>';
-        dates.forEach(d => {
-            tbodyHtml += `<td class="text-center bold">${totals[d] > 0 ? totals[d] : ''}</td>`;
-        });
-        tbodyHtml += '</tr>';
-    }
-
-    tbodyHtml += '</tbody>';
-    tableElem.innerHTML = theadHtml + tbodyHtml;
+    renderMatrixTable(dataset, tableContainerId, 'Brand', 'brand', false);
 }
 
 function getBranchFilteredAdminData() {
@@ -599,6 +559,7 @@ function renderAdminDailyAnalytics() {
 
     renderBrandMatrixTable(branchData.registration, 'table-daily-registration-brand');
     renderBrandMatrixTable(branchData.closure, 'table-daily-closing-brand');
+    renderMatrixTable(branchData.closure, 'table-daily-closing-tech', 'Technician', 'tech', true);
 
     renderGraphFilterButtons(branchData);
     renderDailyAnalyticsChart(branchData);
@@ -2222,7 +2183,7 @@ function copyUsersAsCode() {
 
 /* SCROLL TO TOP FUNCTIONALITY */
 function initScrollToTop() {
-    const scrollBtn = document.getElementById('scroll-top-btn');
+    const scrollBtn = document.getElementById('btn-scroll-top') || document.getElementById('scroll-top-btn');
     if (!scrollBtn) return;
 
     window.addEventListener('scroll', () => {
@@ -2688,3 +2649,244 @@ async function saveAdminUploadToCloud(file, type) {
     cloudStatusNotice = '⚠ Not saved online (invalid Admin Upload Key). Visible in this session only.';
     renderLastUpdated();
 }
+
+
+/* ==========================================================================
+   QUICK-LINK CHIPS (one-line shortcuts to each table, under the main title)
+   ========================================================================== */
+const QUICK_NAV_ITEMS = [
+    { perm: 'kpi',             label: 'KPI',            sel: '.kpi-grid' },
+    { perm: 'pendReason',      label: 'Pend Reason',    sel: '[data-perm="pendReason"]' },
+    { perm: 'warranty',        label: 'Warranty',       sel: '[data-perm="warranty"]' },
+    { perm: 'ageBrand',        label: 'Age-Brand',      sel: '[data-perm="ageBrand"]' },
+    { perm: 'ageBranch',       label: 'Age-Branch',     sel: '[data-perm="ageBranch"]' },
+    { perm: 'ageTech',         label: 'Age-Tech',       sel: '[data-perm="ageTech"]' },
+    { perm: 'graph',           label: 'Reg vs Close',   sel: '[data-perm="graph"]' },
+    { perm: 'dailyReg',        label: 'Daily Reg',      sel: '[data-perm="dailyReg"]' },
+    { perm: 'dailyClose',      label: 'Daily Close',    sel: '[data-perm="dailyClose"]' },
+    { perm: 'dailyRegBrand',   label: 'Reg-Brand',      sel: '[data-perm="dailyRegBrand"]' },
+    { perm: 'dailyCloseBrand', label: 'Close-Brand',    sel: '[data-perm="dailyCloseBrand"]' },
+    { perm: 'dailyCloseTech',  label: 'Close-Tech',     sel: '[data-perm="dailyCloseTech"]' },
+    { perm: 'detailed',        label: 'Detailed Jobs',  sel: '#detailed-section' }
+];
+
+function buildQuickNav() {
+    const box = document.getElementById('quick-nav');
+    if (!box || !currentUser) return;
+    box.innerHTML = '';
+    QUICK_NAV_ITEMS.forEach(item => {
+        if (!hasPerm(item.perm)) return;
+        const target = document.querySelector(item.sel);
+        if (!target) return;
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'quick-nav-chip';
+        chip.textContent = item.label;
+        chip.title = 'Go to ' + item.label;
+        chip.addEventListener('click', () => {
+            const el = document.querySelector(item.sel);
+            if (!el || el.offsetParent === null) return;
+            const nav = document.querySelector('.top-nav');
+            const offset = (nav ? nav.offsetHeight : 70) + 10;
+            const top = el.getBoundingClientRect().top + window.scrollY - offset;
+            window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+        });
+        box.appendChild(chip);
+    });
+}
+
+/* ==========================================================================
+   USER PROFILE (name, password, small photo) + login-page photo
+   Photos are shrunk in the browser to ~96px JPEG (about 4-8 KB) and kept in one
+   small online file, so free-plan limits are not affected.
+   ========================================================================== */
+let AVATARS = {};          // { userId(lowercase): dataURL }
+let profilePhotoDraft;     // undefined = unchanged, '' = remove, string = new photo
+
+function avatarFor(username) {
+    return AVATARS[String(username || '').trim().toLowerCase()] || '';
+}
+
+async function loadAvatars() {
+    try {
+        const res = await fetch(`${CLOUD_API}?type=avatars`, { cache: 'no-store' });
+        if (!res.ok) return;
+        const map = await res.json();
+        if (map && typeof map === 'object') AVATARS = map;
+    } catch (e) { /* photos are optional */ }
+}
+
+function setAvatarEl(el, url, fallbackHtml) {
+    if (!el) return;
+    if (url) {
+        el.innerHTML = '';
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = 'Profile photo';
+        el.appendChild(img);
+        el.classList.add('has-photo');
+    } else {
+        el.innerHTML = fallbackHtml;
+        el.classList.remove('has-photo');
+    }
+}
+
+function refreshLoginAvatar() {
+    const badge = document.querySelector('#login-page .user-avatar-badge');
+    if (!badge) return;
+    if (badge.dataset.defaultHtml === undefined) badge.dataset.defaultHtml = badge.innerHTML;
+    const val = (document.getElementById('username') || {}).value;
+    setAvatarEl(badge, avatarFor(val), badge.dataset.defaultHtml);
+}
+
+function refreshProfileHeader() {
+    if (!currentUser) return;
+    const nameEl = document.getElementById('user-display-name');
+    if (nameEl) nameEl.textContent = displayName(currentUser);
+    const av = document.getElementById('user-avatar-mini');
+    const initial = (displayName(currentUser) || '?').trim().charAt(0).toUpperCase();
+    setAvatarEl(av, avatarFor(currentUser.username), `<span>${escapeEmailHtml(initial)}</span>`);
+}
+
+/** Resize to a small square JPEG data URL. */
+function resizeImageToDataUrl(file, size = 96) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Could not read the image.'));
+        reader.onload = () => {
+            const img = new Image();
+            img.onerror = () => reject(new Error('This file is not a valid image.'));
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = size; canvas.height = size;
+                const ctx = canvas.getContext('2d');
+                const side = Math.min(img.width, img.height);
+                const sx = (img.width - side) / 2, sy = (img.height - side) / 2;
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(0, 0, size, size);
+                ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+                resolve(canvas.toDataURL('image/jpeg', 0.72));
+            };
+            img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+function openProfileModal() {
+    if (!currentUser) return;
+    const modal = document.getElementById('profile-modal');
+    if (!modal) return;
+    document.getElementById('pf-userid').value = currentUser.username;
+    document.getElementById('pf-name').value = currentUser.name || '';
+    ['pf-current-pw', 'pf-new-pw', 'pf-confirm-pw'].forEach(id => { document.getElementById(id).value = ''; });
+    document.getElementById('pf-status').textContent = '';
+    document.getElementById('pf-status').className = 'um-save-status';
+    profilePhotoDraft = undefined;
+    const initial = (displayName(currentUser) || '?').trim().charAt(0).toUpperCase();
+    setAvatarEl(document.getElementById('pf-photo-preview'), avatarFor(currentUser.username), `<span>${escapeEmailHtml(initial)}</span>`);
+    modal.style.display = 'flex';
+}
+
+function closeProfileModal() {
+    const modal = document.getElementById('profile-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function saveProfile(e) {
+    e.preventDefault();
+    const status = document.getElementById('pf-status');
+    const say = (msg, cls) => { status.textContent = msg; status.className = 'um-save-status ' + (cls || ''); };
+
+    const newName = document.getElementById('pf-name').value.trim();
+    const curPw = document.getElementById('pf-current-pw').value;
+    const newPw = document.getElementById('pf-new-pw').value;
+    const confPw = document.getElementById('pf-confirm-pw').value;
+
+    if (!curPw) return say('Enter your current password to save changes.', 'err');
+    if (curPw !== currentUser.password) return say('Current password is not correct.', 'err');
+    if (newPw || confPw) {
+        if (newPw.length < 4) return say('New password must be at least 4 characters.', 'err');
+        if (newPw !== confPw) return say('New password and confirm password do not match.', 'err');
+    }
+
+    const btn = document.getElementById('btn-save-profile');
+    btn.disabled = true;
+    say('Saving...', '');
+    try {
+        const res = await fetch(`${CLOUD_API}?type=profile`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username: currentUser.username,
+                password: curPw,
+                name: newName,
+                newPassword: newPw || '',
+                photo: profilePhotoDraft
+            })
+        });
+        let out = {};
+        try { out = await res.json(); } catch (_) {}
+        if (!res.ok) throw new Error(out.error || ('Save failed (' + res.status + ')'));
+
+        // apply locally
+        currentUser.name = newName;
+        if (newPw) currentUser.password = newPw;
+        const rec = USERS.find(u => u.username.toLowerCase() === currentUser.username.toLowerCase());
+        if (rec) { rec.name = newName; if (newPw) rec.password = newPw; }
+        const key = currentUser.username.toLowerCase();
+        if (profilePhotoDraft === '') delete AVATARS[key];
+        else if (profilePhotoDraft) AVATARS[key] = profilePhotoDraft;
+        localStorage.setItem('sentinel_session_user', JSON.stringify({ username: currentUser.username, password: currentUser.password }));
+        refreshProfileHeader();
+        say('✓ Profile saved.', 'ok');
+        setTimeout(closeProfileModal, 900);
+    } catch (err) {
+        say('⚠ ' + err.message, 'err');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    // login-page photo
+    loadAvatars().then(refreshLoginAvatar);
+    const uInput = document.getElementById('username');
+    if (uInput) {
+        uInput.addEventListener('input', refreshLoginAvatar);
+        uInput.addEventListener('change', refreshLoginAvatar);
+    }
+    const loginForm = document.getElementById('login-form');
+    if (loginForm) loginForm.addEventListener('reset', () => setTimeout(refreshLoginAvatar, 0));
+
+    // profile screen
+    const badge = document.getElementById('user-badge');
+    if (badge) badge.addEventListener('click', openProfileModal);
+    const form = document.getElementById('profile-form');
+    if (form) form.addEventListener('submit', saveProfile);
+    ['btn-close-profile', 'btn-cancel-profile'].forEach(id => {
+        const b = document.getElementById(id);
+        if (b) b.addEventListener('click', closeProfileModal);
+    });
+    const fileIn = document.getElementById('pf-photo-input');
+    if (fileIn) fileIn.addEventListener('change', async () => {
+        const f = fileIn.files && fileIn.files[0];
+        fileIn.value = '';
+        if (!f) return;
+        const status = document.getElementById('pf-status');
+        try {
+            profilePhotoDraft = await resizeImageToDataUrl(f);
+            setAvatarEl(document.getElementById('pf-photo-preview'), profilePhotoDraft, '');
+            status.textContent = '';
+        } catch (err) {
+            status.textContent = '⚠ ' + err.message;
+            status.className = 'um-save-status err';
+        }
+    });
+    const rm = document.getElementById('pf-photo-remove');
+    if (rm) rm.addEventListener('click', () => {
+        profilePhotoDraft = '';
+        const initial = (displayName(currentUser) || '?').trim().charAt(0).toUpperCase();
+        setAvatarEl(document.getElementById('pf-photo-preview'), '', `<span>${escapeEmailHtml(initial)}</span>`);
+    });
+});
