@@ -52,7 +52,7 @@
                             <span class="input-icon">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                             </span>
-                            <input type="text" id="username" placeholder="Username" required autocomplete="username">
+                            <input type="text" id="username" placeholder="User ID" required autocomplete="username">
                         </div>
 
                         <div class="input-field-group">
@@ -130,7 +130,7 @@
                     <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv, .txt, .tsv" style="display: none;">
                 </div>
 
-                <button class="btn-action" id="btn-export-excel">Export Excel</button>
+                <button class="btn-action" id="btn-export-excel" data-perm="export">Export Excel</button>
                 <button class="btn-action" id="btn-user-mgmt" style="display: none;">User Mgmt</button>
 <!-- Inside <div class="nav-controls"> or <div class="header-nav-buttons"> -->
 <button type="button" class="btn-action" id="btn-send-email" onclick="handleSendEmailClick()">
@@ -148,7 +148,7 @@
             </div>
 
             <!-- KPI SUMMARY CARDS -->
-            <div class="kpi-grid">
+            <div class="kpi-grid" data-perm="kpi">
                 <div class="kpi-card info" onclick="filterDetailedTable('ALL', 'Total Pending Jobs')">
                     <div class="kpi-title">Total Pending Jobs</div>
                     <div class="kpi-value" id="kpi-ttl-pend">0</div>
@@ -177,8 +177,8 @@
             </div>
 
             <!-- 3-COLUMN BREAKDOWNS -->
-            <div class="sub-dashboards-three-col">
-                <div class="summary-card">
+            <div class="sub-dashboards-three-col perm-group">
+                <div class="summary-card" data-perm="pendReason">
                     <div class="card-header flex-between">
                         <h3>Pending Reason Summary</h3>
                         <button class="btn-capture-table" onclick="captureTableToClipboard('table-pend-reason')" title="Capture Image">📷</button>
@@ -197,7 +197,7 @@
                     </div>
                 </div>
 
-                <div class="summary-card">
+                <div class="summary-card" data-perm="warranty">
                     <div class="card-header flex-between">
                         <h3>Warranty Type Breakdown</h3>
                         <button class="btn-capture-table" onclick="captureTableToClipboard('table-warranty')" title="Capture Image">📷</button>
@@ -216,7 +216,7 @@
                     </div>
                 </div>
 
-                <div class="summary-card">
+                <div class="summary-card" data-perm="ageBrand">
                     <div class="card-header flex-between">
                         <h3>Age Wise Pending Jobs - Brand Wise</h3>
                         <button class="btn-capture-table" onclick="captureTableToClipboard('table-age-brand')" title="Capture Image">📷</button>
@@ -242,9 +242,9 @@
                 </div>
             </div>
 
-            <!-- BRANCH & TECHNICIAN MATRICES -->
-            <div class="sub-dashboards-grid">
-                <div class="summary-card">
+            <!-- BRANCH & TECHNICIAN MATRICES (side by side, equal width) -->
+            <div class="sub-dashboards-grid age-pair-grid perm-group">
+                <div class="summary-card branch-card" data-perm="ageBranch">
                     <div class="card-header flex-between">
                         <h3>Age Wise Pending Jobs - Branch Wise</h3>
                         <button class="btn-capture-table" onclick="captureTableToClipboard('table-age-branch')" title="Capture Image">📷</button>
@@ -268,10 +268,7 @@
                         </table>
                     </div>
                 </div>
-            </div>
-
-            <div class="sub-dashboards-grid">
-                <div class="summary-card">
+                <div class="summary-card tech-card" data-perm="ageTech">
                     <div class="card-header flex-between">
                         <h3>Age Wise Pending Jobs - Technician Wise</h3>
                         <button class="btn-capture-table" onclick="captureTechTableToClipboard()" title="Capture Image">📷</button>
@@ -300,7 +297,7 @@
 
             <!-- ADMIN DAILY REGISTRATION & CLOSING SECTION -->
             <div id="admin-daily-analytics-section" class="sub-dashboards-grid admin-only-section" style="display: none;">
-<div class="summary-card">
+<div class="summary-card" data-perm="graph">
 <div class="card-header flex-between">
     <h3>Daily Registration vs Closing</h3>
     <div class="chart-header-actions">
@@ -314,8 +311,8 @@
     </div>
 </div>
 
-                <div class="sub-dashboards-three-col" style="grid-template-columns: 1fr 1fr; gap: 1rem;">
-                    <div class="summary-card">
+                <div class="sub-dashboards-three-col perm-group" style="grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="summary-card" data-perm="dailyReg">
                         <div class="card-header flex-between">
                             <h3>Daily Job Registration</h3>
                             <button class="btn-capture-table" onclick="captureTableToClipboard('table-daily-registration')" title="Capture Image">📷</button>
@@ -333,7 +330,7 @@
                         </div>
                     </div>
 
-                    <div class="summary-card">
+                    <div class="summary-card" data-perm="dailyClose">
                         <div class="card-header flex-between">
                             <h3>Daily Job Closing</h3>
                             <button class="btn-capture-table" onclick="captureTableToClipboard('table-daily-closing')" title="Capture Image">📷</button>
@@ -352,8 +349,8 @@
                     </div>
                 </div>
 
-                <div class="sub-dashboards-three-col" style="grid-template-columns: 1fr 1fr; gap: 1rem;">
-                    <div class="summary-card">
+                <div class="sub-dashboards-three-col perm-group" style="grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="summary-card" data-perm="dailyRegBrand">
                         <div class="card-header flex-between">
                             <h3>Daily Registration (Brand Wise)</h3>
                             <button class="btn-capture-table" onclick="captureTableToClipboard('table-daily-registration-brand')" title="Capture Image">📷</button>
@@ -366,7 +363,7 @@
                         </div>
                     </div>
 
-                    <div class="summary-card">
+                    <div class="summary-card" data-perm="dailyCloseBrand">
                         <div class="card-header flex-between">
                             <h3>Daily Job Closing (Brand Wise)</h3>
                             <button class="btn-capture-table" onclick="captureTableToClipboard('table-daily-closing-brand')" title="Capture Image">📷</button>
@@ -382,7 +379,7 @@
             </div>
 
             <!-- DETAILED OVERVIEW TABLE -->
-            <div class="detailed-dashboard-section" id="detailed-section">
+            <div class="detailed-dashboard-section" id="detailed-section" data-perm="detailed">
                 <div class="card-header flex-between">
                     <div>
                         <h3>Detailed Job Overview</h3>
@@ -431,26 +428,46 @@
                 <form id="user-form">
                     <input type="hidden" id="user-edit-index" value="-1">
                     <div class="user-form-grid">
-                        <div class="input-field-group">
-                            <input type="text" id="um-username" placeholder="Username" required>
+                        <div class="um-field">
+                            <label for="um-username">User ID (used to log in)</label>
+                            <input type="text" id="um-username" placeholder="User ID" required>
                         </div>
-                        <div class="input-field-group">
+                        <div class="um-field">
+                            <label for="um-name">User Name (shown on dashboard)</label>
+                            <input type="text" id="um-name" placeholder="User Name">
+                        </div>
+                        <div class="um-field">
+                            <label for="um-password">Password</label>
                             <input type="text" id="um-password" placeholder="Password" required>
                         </div>
-                        <div class="input-field-group">
+                        <div class="um-field">
+                            <label for="um-role">Role</label>
                             <select id="um-role" class="select-input" style="width: 100%;">
                                 <option value="Supervisor">Supervisor</option>
                                 <option value="Manager">Manager</option>
                                 <option value="Admin">Admin</option>
                             </select>
                         </div>
-                        <div class="input-field-group">
-                            <input type="text" id="um-branch" placeholder="Branch (or ALL)" required>
+                        <div class="um-field" id="um-branch-group">
+                            <label for="um-branch">Branch (Supervisor only)</label>
+                            <select id="um-branch" class="select-input" style="width: 100%;"></select>
+                        </div>
+                        <div class="um-field um-perm-field">
+                            <div class="um-perm-head">
+                                <label>Access: tables, graph and fields this user can see</label>
+                                <span class="um-perm-actions">
+                                    <button type="button" class="btn-icon" id="um-perm-all">Select all</button>
+                                    <button type="button" class="btn-icon" id="um-perm-none">Clear</button>
+                                </span>
+                            </div>
+                            <div id="um-perm-list" class="um-perm-list"></div>
                         </div>
                         <div class="form-actions">
                             <button type="submit" class="btn-action" id="btn-save-user" style="background-color: var(--primary-green); color: white;">Save User</button>
                             <button type="button" class="btn-action" id="btn-cancel-user-edit" style="display: none;">Cancel</button>
+                            <button type="button" class="btn-action" id="btn-copy-users-code" title="Copy the user list as code to paste into app.js">&lt;/&gt; Copy as code</button>
                         </div>
+                        <div id="um-save-status" class="um-save-status"></div>
                     </div>
                 </form>
 
@@ -460,10 +477,12 @@
                     <table id="table-users">
                         <thead>
                             <tr>
-                                <th>Username</th>
+                                <th>User ID</th>
+                                <th>User Name</th>
                                 <th>Password</th>
                                 <th>Role</th>
                                 <th>Branch</th>
+                                <th>Access</th>
                                 <th class="text-right">Actions</th>
                             </tr>
                         </thead>

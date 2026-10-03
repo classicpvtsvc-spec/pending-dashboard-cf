@@ -4,8 +4,8 @@
 
 // User Database Configuration
 let USERS = [
-    { username: 'Arun', password: '1234', role: 'Admin', branch: 'ALL' },
-    { username: 'Yasir', password: '1234', role: 'Admin', branch: 'ALL' },
+    { username: 'Arun', name: 'Arun', password: '1234', role: 'Admin', branch: 'ALL' },
+    { username: 'Yasir', name: 'Yasir', password: '1234', role: 'Admin', branch: 'ALL' },
     { username: '1354', password: '1234', role: 'Manager', branch: 'ALL' },
     { username: 'Dibil', password: '1234', role: 'Supervisor', branch: 'Jeddah' },
     { username: '1891', password: '1891', role: 'Supervisor', branch: 'Al Kharj' },
@@ -26,6 +26,85 @@ let USERS = [
     { username: 'FG365', password: 'FG365', role: 'Supervisor', branch: 'Riyadh' },
     { username: '9408', password: '9408', role: 'Supervisor', branch: 'Khobar' }
 ];
+
+/* ==========================================================================
+   USER ACCESS (permissions) MODEL
+   Admin always sees everything. Other users see only the items ticked for them.
+   Existing users without saved permissions get DEFAULT_PERMS (all the tables they
+   could see before; the daily registration/closing items stay Admin-only unless ticked).
+   ========================================================================== */
+const PERM_DEFS = [
+    { key: 'kpi',            label: 'KPI Cards' },
+    { key: 'pendReason',     label: 'Pending Reason Summary' },
+    { key: 'warranty',       label: 'Warranty Type Breakdown' },
+    { key: 'ageBrand',       label: 'Age Wise Pending - Brand Wise' },
+    { key: 'ageBranch',      label: 'Age Wise Pending - Branch Wise' },
+    { key: 'ageTech',        label: 'Age Wise Pending - Technician Wise' },
+    { key: 'graph',          label: 'Graph: Daily Registration vs Closing' },
+    { key: 'dailyReg',       label: 'Daily Job Registration' },
+    { key: 'dailyClose',     label: 'Daily Job Closing' },
+    { key: 'dailyRegBrand',  label: 'Daily Registration (Brand Wise)' },
+    { key: 'dailyCloseBrand',label: 'Daily Job Closing (Brand Wise)' },
+    { key: 'detailed',       label: 'Detailed Job Overview table' },
+    { key: 'export',         label: 'Export Excel button' }
+];
+const PERM_KEYS = PERM_DEFS.map(p => p.key);
+const DAILY_PERM_KEYS = ['graph', 'dailyReg', 'dailyClose', 'dailyRegBrand', 'dailyCloseBrand'];
+const DEFAULT_PERMS = PERM_KEYS.filter(k => !DAILY_PERM_KEYS.includes(k));
+
+function normalizeUser(u) {
+    const role = ['Admin', 'Manager', 'Supervisor'].includes(u.role) ? u.role : 'Supervisor';
+    return {
+        username: String(u.username || '').trim(),
+        name: String(u.name || '').trim(),
+        password: String(u.password || ''),
+        role: role,
+        branch: role === 'Supervisor' ? String(u.branch || '').trim() : 'ALL',
+        perms: role === 'Admin'
+            ? PERM_KEYS.slice()
+            : (Array.isArray(u.perms) ? u.perms.filter(p => PERM_KEYS.includes(p)) : DEFAULT_PERMS.slice())
+    };
+}
+USERS = USERS.map(normalizeUser);
+
+function displayName(u) { return (u && (u.name || u.username)) || ''; }
+function hasPerm(key) {
+    if (!currentUser) return false;
+    if (currentUser.role === 'Admin') return true;
+    return (currentUser.perms || DEFAULT_PERMS).includes(key);
+}
+function canViewDaily() { return DAILY_PERM_KEYS.some(hasPerm); }
+
+function setHidden(el, hidden) {
+    if (hidden) el.style.setProperty('display', 'none', 'important');
+    else el.style.removeProperty('display');
+}
+
+/** Show/hide every dashboard item according to the logged-in user's access. */
+function applyPermissions() {
+    document.querySelectorAll('[data-perm]').forEach(el => setHidden(el, !hasPerm(el.dataset.perm)));
+    document.querySelectorAll('.perm-group').forEach(g => {
+        const kids = Array.from(g.children).filter(k => k.hasAttribute('data-perm'));
+        const visible = kids.filter(k => k.style.display !== 'none');
+        setHidden(g, kids.length > 0 && visible.length === 0);
+        g.classList.toggle('single', visible.length === 1);
+    });
+    syncAgeTableHeights();
+}
+
+/** Technician table gets the same height as the Branch table (scrolls if more rows). */
+function syncAgeTableHeights() {
+    const bw = document.querySelector('#table-age-branch')?.closest('.table-wrapper');
+    const tw = document.querySelector('#table-age-tech')?.closest('.table-wrapper');
+    if (!bw || !tw) return;
+    const hidden = el => el.closest('.summary-card')?.style.display === 'none';
+    if (window.innerWidth <= 900 || hidden(bw) || hidden(tw)) { tw.style.maxHeight = ''; return; }
+    requestAnimationFrame(() => {
+        const h = bw.scrollHeight + 2;
+        tw.style.maxHeight = Math.max(h, 220) + 'px';
+    });
+}
+window.addEventListener('resize', syncAgeTableHeights);
 
 // Mappings for Codes and Descriptions
 const SERVICE_TYPE_MAP = {
@@ -98,41 +177,50 @@ document.addEventListener('DOMContentLoaded', () => {
     initScrollToTop();
 });
 
+let usersReady = Promise.resolve();
+
+function showAppFor(user) {
+    currentUser = user;
+    localStorage.setItem('sentinel_session_user', JSON.stringify({ username: user.username, password: user.password }));
+    document.getElementById('login-error').style.display = 'none';
+    document.getElementById('login-page').style.display = 'none';
+    document.getElementById('app-container').style.display = 'block';
+    setupUserSession();
+    loadDefaultDataFile();
+}
+
 function initAuth() {
+    // Load the latest saved user list (online) before anyone can log in
+    usersReady = loadUsersFromCloud();
+
     const loginForm = document.getElementById('login-form');
-    loginForm.addEventListener('submit', (e) => {
+    loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
+        await usersReady;
         const uInput = document.getElementById('username').value.trim();
         const pInput = document.getElementById('password').value.trim();
 
         const user = USERS.find(u => u.username.toLowerCase() === uInput.toLowerCase() && u.password === pInput);
         if (user) {
-            currentUser = user;
-            localStorage.setItem('sentinel_session_user', JSON.stringify(currentUser));
-            
-            document.getElementById('login-error').style.display = 'none';
-            document.getElementById('login-page').style.display = 'none';
-            document.getElementById('app-container').style.display = 'block';
-            
-            setupUserSession();
-            loadDefaultDataFile();
+            showAppFor(user);
         } else {
             document.getElementById('login-error').style.display = 'block';
         }
     });
 
-    const savedUser = localStorage.getItem('sentinel_session_user');
-    if (savedUser) {
+    // Restore a saved session, using the freshest user record (so access changes apply)
+    usersReady.then(() => {
+        const savedUser = localStorage.getItem('sentinel_session_user');
+        if (!savedUser) return;
         try {
-            currentUser = JSON.parse(savedUser);
-            document.getElementById('login-page').style.display = 'none';
-            document.getElementById('app-container').style.display = 'block';
-            setupUserSession();
-            loadDefaultDataFile();
+            const saved = JSON.parse(savedUser);
+            const fresh = USERS.find(u => u.username.toLowerCase() === String(saved.username || '').toLowerCase() && u.password === saved.password);
+            if (fresh) showAppFor(fresh);
+            else localStorage.removeItem('sentinel_session_user');
         } catch (e) {
             localStorage.removeItem('sentinel_session_user');
         }
-    }
+    });
 
     document.getElementById('btn-logout').addEventListener('click', () => {
         currentUser = null;
@@ -144,8 +232,9 @@ function initAuth() {
 }
 
 function setupUserSession() {
-    document.getElementById('user-display-name').textContent = currentUser.username;
-    document.getElementById('user-display-role').textContent = `${currentUser.role}${currentUser.branch !== 'ALL' ? ' (' + currentUser.branch + ')' : ''}`;
+    document.getElementById('user-display-name').textContent = displayName(currentUser);
+    const roleBadge = document.getElementById('user-display-role');
+    if (roleBadge) roleBadge.style.display = 'none';   // dashboard shows the User Name only
 
     const userMgmtBtn = document.getElementById('btn-user-mgmt');
     const adminUploadControls = document.getElementById('admin-upload-controls');
@@ -161,8 +250,10 @@ function setupUserSession() {
     } else {
         userMgmtBtn.style.display = 'none';
         if (adminUploadControls) adminUploadControls.style.display = 'none';
-        if (adminAnalyticsSection) adminAnalyticsSection.style.display = 'none';
+        if (adminAnalyticsSection) adminAnalyticsSection.style.display = canViewDaily() ? 'block' : 'none';
     }
+
+    applyPermissions();
 
     const branchSelect = document.getElementById('branch-filter');
     branchSelect.innerHTML = '';
@@ -499,7 +590,7 @@ function getBranchFilteredAdminData() {
 }
 
 function renderAdminDailyAnalytics() {
-    if (currentUser.role !== 'Admin') return;
+    if (!currentUser || !canViewDaily()) return;
 
     const branchData = getBranchFilteredAdminData();
 
@@ -966,11 +1057,12 @@ function processDashboardData() {
     renderAgeWiseMatrix('branch', 'table-age-branch');
     renderAgeWiseMatrix('technician', 'table-age-tech');
     
-    if (currentUser && currentUser.role === 'Admin') {
+    if (currentUser && canViewDaily()) {
         renderAdminDailyAnalytics();
     }
 
     filterDetailedTable('ALL', 'Total Pending Jobs', null, false);
+    syncAgeTableHeights();
 }
 
 function hasPendingPartStatus(record) {
@@ -1890,6 +1982,109 @@ function copyJobCardAsImage() {
 }
 
 /* USER MANAGEMENT FUNCTIONS */
+let editingUserIndex = -1;
+
+/** Fetch the online-saved user list (saved by Admin). Falls back to the list in this file. */
+async function loadUsersFromCloud() {
+    try {
+        const res = await fetch(`${CLOUD_API}?type=users`, { cache: 'no-store' });
+        if (!res.ok) return;
+        const list = JSON.parse(await res.text());
+        if (!Array.isArray(list) || list.length === 0) return;
+        const cleaned = list.map(normalizeUser).filter(u => u.username && u.password);
+        if (cleaned.some(u => u.role === 'Admin')) USERS = cleaned;
+    } catch (err) {
+        console.warn('Saved user list not available, using users from app.js:', err);
+    }
+}
+
+/** Save the current user list online so every device uses it (needs the Admin Upload Key). */
+async function persistUsers() {
+    const status = document.getElementById('um-save-status');
+    const setStatus = (msg, cls) => { if (status) { status.textContent = msg; status.className = 'um-save-status ' + (cls || ''); } };
+    setStatus('Saving user list online...', '');
+    const file = new File([JSON.stringify(USERS)], 'users.json', { type: 'application/json' });
+    await saveAdminUploadToCloud(file, 'users');
+    if (cloudStatusNotice.startsWith('✓')) {
+        setStatus('✓ User list saved online. All devices will use it.', 'ok');
+    } else {
+        setStatus(cloudStatusNotice.replace(/^⚠\s*/, '⚠ ') || '⚠ Not saved online.', 'err');
+    }
+}
+
+function getKnownBranches() {
+    const set = new Set();
+    USERS.forEach(u => { if (u.branch && u.branch !== 'ALL') set.add(u.branch); });
+    rawData.forEach(r => { if (r.branch && r.branch !== 'Unknown') set.add(r.branch); });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
+function fillBranchSelect(selected) {
+    const sel = document.getElementById('um-branch');
+    if (!sel) return;
+    const branches = getKnownBranches();
+    if (selected && !branches.includes(selected)) branches.push(selected);
+    sel.innerHTML = '<option value="">Select branch...</option>' +
+        branches.map(b => `<option value="${escapeEmailHtml(b)}">${escapeEmailHtml(b)}</option>`).join('') +
+        '<option value="__new__">+ Add new branch...</option>';
+    sel.value = selected || '';
+}
+
+function renderPermCheckboxes(selected) {
+    const box = document.getElementById('um-perm-list');
+    if (!box) return;
+    box.innerHTML = PERM_DEFS.map(p => `
+        <label class="um-perm-item">
+            <input type="checkbox" value="${p.key}" ${selected.includes(p.key) ? 'checked' : ''}>
+            <span>${escapeEmailHtml(p.label)}</span>
+        </label>`).join('');
+}
+
+function getCheckedPerms() {
+    return Array.from(document.querySelectorAll('#um-perm-list input:checked')).map(i => i.value);
+}
+
+/** Branch picker only for Supervisor; Admin gets every permission (locked). */
+function updateRoleUI() {
+    const role = document.getElementById('um-role').value;
+    document.getElementById('um-branch-group').style.display = role === 'Supervisor' ? '' : 'none';
+    const boxes = document.querySelectorAll('#um-perm-list input');
+    boxes.forEach(b => {
+        if (role === 'Admin') b.checked = true;
+        b.disabled = role === 'Admin';
+    });
+    ['um-perm-all', 'um-perm-none'].forEach(id => { const el = document.getElementById(id); if (el) el.disabled = role === 'Admin'; });
+}
+
+function resetUserForm() {
+    editingUserIndex = -1;
+    document.getElementById('user-form').reset();
+    document.getElementById('user-edit-index').value = '-1';
+    document.getElementById('um-username').disabled = false;
+    fillBranchSelect('');
+    renderPermCheckboxes(DEFAULT_PERMS);
+    updateRoleUI();
+    document.getElementById('btn-save-user').textContent = 'Save User';
+    document.getElementById('btn-cancel-user-edit').style.display = 'none';
+}
+
+function editUser(index) {
+    const u = USERS[index];
+    if (!u) return;
+    editingUserIndex = index;
+    document.getElementById('user-edit-index').value = String(index);
+    document.getElementById('um-username').value = u.username;
+    document.getElementById('um-name').value = u.name;
+    document.getElementById('um-password').value = u.password;
+    document.getElementById('um-role').value = u.role;
+    fillBranchSelect(u.role === 'Supervisor' ? u.branch : '');
+    renderPermCheckboxes(u.perms || DEFAULT_PERMS);
+    updateRoleUI();
+    document.getElementById('btn-save-user').textContent = 'Update User';
+    document.getElementById('btn-cancel-user-edit').style.display = '';
+    document.getElementById('um-name').focus();
+}
+
 function initUserManagement() {
     const btnUserMgmt = document.getElementById('btn-user-mgmt');
     const modal = document.getElementById('user-mgmt-modal');
@@ -1898,38 +2093,83 @@ function initUserManagement() {
 
     if (btnUserMgmt) {
         btnUserMgmt.addEventListener('click', () => {
+            document.getElementById('um-save-status').textContent = '';
             renderUserTable();
+            resetUserForm();
             modal.style.display = 'flex';
         });
     }
+    if (btnClose) btnClose.addEventListener('click', () => { modal.style.display = 'none'; });
+    if (!userForm) return;
 
-    if (btnClose) {
-        btnClose.addEventListener('click', () => {
-            modal.style.display = 'none';
-        });
-    }
+    document.getElementById('um-role').addEventListener('change', () => {
+        const role = document.getElementById('um-role').value;
+        if (role !== 'Admin' && getCheckedPerms().length === PERM_KEYS.length) {
+            renderPermCheckboxes(DEFAULT_PERMS);   // leaving Admin: back to the standard access
+        }
+        updateRoleUI();
+    });
 
-    if (userForm) {
-        userForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const username = document.getElementById('um-username').value.trim();
-            const password = document.getElementById('um-password').value.trim();
-            const role = document.getElementById('um-role').value;
-            const branch = document.getElementById('um-branch').value.trim() || 'ALL';
+    document.getElementById('um-branch').addEventListener('change', (e) => {
+        if (e.target.value !== '__new__') return;
+        const name = (prompt('Enter the new branch name (must match the BRANCH_NAME in the data file):') || '').trim();
+        fillBranchSelect('');
+        if (name) {
+            const sel = document.getElementById('um-branch');
+            const opt = document.createElement('option');
+            opt.value = name; opt.textContent = name;
+            sel.insertBefore(opt, sel.querySelector('option[value="__new__"]'));
+            sel.value = name;
+        }
+    });
 
-            if (!username || !password) return;
+    document.getElementById('um-perm-all').addEventListener('click', () => {
+        document.querySelectorAll('#um-perm-list input').forEach(b => { b.checked = true; });
+    });
+    document.getElementById('um-perm-none').addEventListener('click', () => {
+        document.querySelectorAll('#um-perm-list input').forEach(b => { b.checked = false; });
+    });
+    document.getElementById('btn-cancel-user-edit').addEventListener('click', resetUserForm);
+    document.getElementById('btn-copy-users-code').addEventListener('click', copyUsersAsCode);
 
-            const existingIdx = USERS.findIndex(u => u.username.toLowerCase() === username.toLowerCase());
-            if (existingIdx !== -1) {
-                USERS[existingIdx] = { username, password, role, branch };
-            } else {
-                USERS.push({ username, password, role, branch });
-            }
+    userForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = document.getElementById('um-username').value.trim();
+        const name = document.getElementById('um-name').value.trim();
+        const password = document.getElementById('um-password').value.trim();
+        const role = document.getElementById('um-role').value;
+        if (!username || !password) return;
 
-            userForm.reset();
-            renderUserTable();
-        });
-    }
+        let branch = 'ALL';
+        if (role === 'Supervisor') {
+            branch = document.getElementById('um-branch').value;
+            if (!branch || branch === '__new__') { alert('Please select the Branch for this Supervisor.'); return; }
+        }
+        const perms = role === 'Admin' ? PERM_KEYS.slice() : getCheckedPerms();
+        const user = normalizeUser({ username, name, password, role, branch, perms });
+
+        const dupIdx = USERS.findIndex(u => u.username.toLowerCase() === username.toLowerCase());
+        if (dupIdx !== -1 && dupIdx !== editingUserIndex) {
+            alert(`User ID "${username}" already exists. Use the Edit option in the list to change it.`);
+            return;
+        }
+
+        const next = USERS.slice();
+        if (editingUserIndex !== -1) next[editingUserIndex] = user; else next.push(user);
+        if (!next.some(u => u.role === 'Admin')) { alert('At least one Admin user is required.'); return; }
+
+        const editedSelf = editingUserIndex !== -1 && currentUser && USERS[editingUserIndex].username === currentUser.username;
+        USERS = next;
+        if (editedSelf) {
+            currentUser = user;
+            localStorage.setItem('sentinel_session_user', JSON.stringify({ username: user.username, password: user.password }));
+            setupUserSession();
+            if (rawData.length) processDashboardData();
+        }
+        resetUserForm();
+        renderUserTable();
+        await persistUsers();
+    });
 }
 
 function renderUserTable() {
@@ -1938,25 +2178,46 @@ function renderUserTable() {
     tbody.innerHTML = '';
 
     USERS.forEach((u, idx) => {
+        const accessText = u.role === 'Admin' ? 'All' : `${(u.perms || []).length} / ${PERM_KEYS.length}`;
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td class="bold">${u.username}</td>
+            <td class="bold">${escapeEmailHtml(u.username)}</td>
+            <td>${u.name ? escapeEmailHtml(u.name) : '<span class="muted">-</span>'}</td>
             <td>••••••</td>
-            <td>${u.role}</td>
-            <td>${u.branch}</td>
-            <td class="text-center">
-                <button class="btn-icon danger" onclick="deleteUser(${idx})">Delete</button>
+            <td>${escapeEmailHtml(u.role)}</td>
+            <td>${escapeEmailHtml(u.branch)}</td>
+            <td>${accessText}</td>
+            <td class="text-right">
+                <button type="button" class="btn-icon" onclick="editUser(${idx})">Edit</button>
+                <button type="button" class="btn-icon danger" onclick="deleteUser(${idx})">Delete</button>
             </td>
         `;
         tbody.appendChild(tr);
     });
 }
 
-function deleteUser(index) {
-    if (confirm(`Are you sure you want to delete user "${USERS[index].username}"?`)) {
-        USERS.splice(index, 1);
-        renderUserTable();
-    }
+async function deleteUser(index) {
+    const u = USERS[index];
+    if (!u) return;
+    if (currentUser && u.username === currentUser.username) { alert('You cannot delete the user you are logged in with.'); return; }
+    if (u.role === 'Admin' && USERS.filter(x => x.role === 'Admin').length <= 1) { alert('At least one Admin user is required.'); return; }
+    if (!confirm(`Are you sure you want to delete user "${u.username}"?`)) return;
+    USERS.splice(index, 1);
+    if (editingUserIndex !== -1) resetUserForm();
+    renderUserTable();
+    await persistUsers();
+}
+
+/** Copy the whole user list as a ready-to-paste "let USERS = [...]" block for app.js. */
+function copyUsersAsCode() {
+    const q = JSON.stringify;
+    const lines = USERS.map(u =>
+        `    { username: ${q(u.username)}, name: ${q(u.name)}, password: ${q(u.password)}, role: ${q(u.role)}, branch: ${q(u.branch)}, perms: ${q(u.perms)} }`);
+    const code = `let USERS = [\n${lines.join(',\n')}\n];`;
+    const status = document.getElementById('um-save-status');
+    const done = () => { status.textContent = '✓ User list copied as code. Paste it over "let USERS = [ ... ];" in app.js.'; status.className = 'um-save-status ok'; };
+    if (navigator.clipboard) navigator.clipboard.writeText(code).then(done).catch(() => prompt('Copy this code:', code));
+    else prompt('Copy this code:', code);
 }
 
 /* SCROLL TO TOP FUNCTIONALITY */
@@ -2290,7 +2551,7 @@ function buildOutlookDraftEml(images) {
    ========================================================================== */
 const CLOUD_API = '/api/data';
 const CLOUD_KEY_STORAGE = 'dashboard_admin_upload_key';
-const CLOUD_LABELS = { pending: 'Pending Jobs', registration: 'Registration', closure: 'Closure' };
+const CLOUD_LABELS = { pending: 'Pending Jobs', registration: 'Registration', closure: 'Closure', users: 'User list' };
 const cloudInfo = { pending: null, registration: null, closure: null };
 let cloudTempNotice = '';   // shown when a non-admin uploads a temporary file
 let cloudStatusNotice = ''; // "Saving..." / error messages
@@ -2335,7 +2596,7 @@ async function loadCloudData() {
         if (!res.ok) return false;
         const info = await res.json();
         const isAdmin = currentUser && currentUser.role === 'Admin';
-        const types = isAdmin ? ['pending', 'registration', 'closure'] : ['pending'];
+        const types = ['pending'].concat(canViewDaily() ? ['registration', 'closure'] : []);
         let pendingLoaded = false;
 
         for (const t of types) {
@@ -2393,7 +2654,7 @@ async function saveAdminUploadToCloud(file, type) {
                     'Content-Type': 'application/octet-stream',
                     'x-admin-key': key,
                     'x-file-name': encodeURIComponent(file.name),
-                    'x-uploaded-by': encodeURIComponent(currentUser.username)
+                    'x-uploaded-by': encodeURIComponent(displayName(currentUser))
                 },
                 body: file
             });

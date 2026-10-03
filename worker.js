@@ -5,7 +5,7 @@
 // Needs: KV binding DASH_KV (set in wrangler.jsonc) and a Secret named ADMIN_UPLOAD_KEY.
 // Saving a new file under the same key automatically replaces (deletes) the old one.
 
-const TYPES = ["pending", "registration", "closure"];
+const TYPES = ["pending", "registration", "closure", "users"];
 const MAX_BYTES = 10 * 1024 * 1024; // 10 MB (KV allows up to 25 MB per value)
 
 const json = (obj, status = 200) =>

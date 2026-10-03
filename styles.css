@@ -1641,3 +1641,59 @@ tbody tr:hover { background-color: rgba(0, 179, 125, 0.09); }
 .last-updated-info .lu-item strong { color: var(--primary-green); font-weight: 700; }
 .last-updated-info .lu-temp { color: var(--warning-orange); font-weight: 600; }
 .last-updated-info .lu-error { color: var(--danger-red); font-weight: 600; }
+
+
+/* ==========================================================================
+   AGE WISE: BRANCH + TECHNICIAN SIDE BY SIDE (equal width)
+   ========================================================================== */
+.age-pair-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    align-items: start;
+}
+.age-pair-grid.single { grid-template-columns: 1fr; }
+.age-pair-grid .summary-card { min-width: 0; }
+.age-pair-grid .branch-card .table-wrapper { max-height: none; }   /* show every row */
+.age-pair-grid .tech-card .table-wrapper { max-height: 400px; }    /* scrolls; height synced by app.js */
+@media screen and (max-width: 900px) {
+    .age-pair-grid { grid-template-columns: 1fr; }
+}
+
+/* ==========================================================================
+   USER MANAGEMENT (extended form)
+   ========================================================================== */
+#user-mgmt-modal .modal-card { max-width: 920px; }
+#user-mgmt-modal .modal-table-wrapper { max-height: 280px; }
+.um-field { display: flex; flex-direction: column; gap: 4px; }
+.um-field label { font-size: 0.74rem; font-weight: 700; color: var(--slate-600); }
+.um-field input[type="text"] {
+    width: 100%;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid var(--slate-200);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    background-color: var(--surface-soft);
+    outline: none;
+}
+.um-field input[type="text"]:focus { border-color: var(--accent-emerald); background: #fff; box-shadow: 0 0 0 3px rgba(0,179,125,0.18); }
+.um-perm-field { grid-column: span 2; }
+.um-perm-head { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+.um-perm-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 4px 12px;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-soft);
+}
+.um-perm-item { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--slate-700); cursor: pointer; }
+.um-perm-item input { accent-color: var(--primary-green); width: 15px; height: 15px; }
+.um-save-status { grid-column: span 2; font-size: 0.8rem; font-weight: 600; min-height: 1.1em; }
+.um-save-status.ok { color: var(--primary-green); }
+.um-save-status.err { color: var(--danger-red); }
+@media screen and (max-width: 480px) {
+    .um-perm-field, .um-save-status { grid-column: span 1; }
+}
