@@ -457,6 +457,8 @@ body {
     align-items: center;
     gap: 0.6rem;
     flex-wrap: wrap;
+    justify-content: flex-end;   /* always aligned to the right edge */
+    margin-left: auto;           /* stays right even when it wraps under the logo */
 }
 
 .filter-group {
