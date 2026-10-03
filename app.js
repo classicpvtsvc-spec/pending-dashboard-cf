@@ -117,22 +117,22 @@ const SERVICE_TYPE_MAP = {
 };
 
 const WARRANTY_TYPE_MAP = {
-    'Aux Warranty': 'AW',
-    'Customer Damaged & NAR': 'OW',
-    'Dealer Warranty': 'CDNAR',
+    'Aux Warranty': 'AUX-W',
+    'Customer Damaged & NAR': 'CDNAR',
+    'Dealer Warranty': 'Dealer-W',
     'Extra Warranty': 'LG-W',
-    'Hisense Warranty': 'Hi-W',
-    'In Warranty': 'Cla-W',
+    'Hisense Warranty': 'Hisence-W',
+    'In Warranty': 'In Warranty',
     'Out Of Warranty': 'OW',
-    'PRO-AV WARRANTY': 'Cla-W',
-    'Retail Extended Warranty': 'Cla-W',
-    'Rheem Warranty': 'Rh-W',
-    'SAMSUNG EXTENDED WARRANTY': 'OW',
-    'Samsung Warranty': 'SAM-W',
-    'Service Warranty': 'Serv-W',
-    'Xiaomi Warranty': 'Xi-W',
-    'Closed by phone': 'Cla-W',
-    'disposal after 3 months': 'Cla-W'
+    'PRO-AV WARRANTY': 'PRO-AV WARRANTY',
+    'Retail Extended Warranty': 'Retail Extended-W',
+    'Rheem Warranty': 'Rheem-W',
+    'SAMSUNG EXTENDED WARRANTY': 'Samung Extended-W',
+    'Samsung Warranty': 'SAMSUNG-W',
+    'Service Warranty': 'Service-W',
+    'Xiaomi Warranty': 'Xiaomi-W',
+    'Closed by phone': 'Closed by Phone',
+    'disposal after 3 months': 'disposal'
 };
 
 const PEND_REASON_MAP = {
