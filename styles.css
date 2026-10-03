@@ -1697,3 +1697,107 @@ tbody tr:hover { background-color: rgba(0, 179, 125, 0.09); }
 @media screen and (max-width: 480px) {
     .um-perm-field, .um-save-status { grid-column: span 1; }
 }
+
+/* ==========================================================================
+   QUICK-LINK CHIPS (single line under the main title)
+   ========================================================================== */
+.quick-nav {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.3rem;
+    overflow-x: auto;
+    padding: 0.35rem 0 0.2rem;
+    scrollbar-width: thin;
+}
+.quick-nav-chip {
+    flex: 0 0 auto;
+    font-family: inherit;
+    font-size: 0.68rem;
+    font-weight: 600;
+    line-height: 1;
+    padding: 0.28rem 0.55rem;
+    border: 1px solid var(--accent-emerald);
+    background: #fff;
+    color: var(--slate-800);
+    border-radius: 999px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+.quick-nav-chip:hover { background: var(--accent-emerald); color: #fff; }
+
+/* ==========================================================================
+   AVERAGE COLUMN + TECH-WISE COMPACT TABLE
+   ========================================================================== */
+th.avg-col, td.avg-col {
+    background: var(--green-soft);
+    border-left: 2px solid var(--accent-emerald);
+}
+th.avg-col { color: #fff; background: var(--slate-800); }
+
+.compact-matrix { table-layout: auto; font-size: 0.7rem; }
+.compact-matrix th, .compact-matrix td { padding: 0.1rem 0.12rem; }
+.compact-matrix th { font-size: 0.66rem; letter-spacing: 0; }
+.compact-matrix td.name-cell,
+.compact-matrix th:first-child {
+    max-width: 90px;
+    min-width: 60px;
+    width: 90px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ==========================================================================
+   PROFILE (header avatar, edit screen, login photo)
+   ========================================================================== */
+.user-badge:hover #user-display-name { text-decoration: underline; }
+.user-avatar-mini {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--accent-emerald);
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    overflow: hidden;
+    margin-right: 0.35rem;
+    vertical-align: middle;
+}
+.user-avatar-mini img,
+.profile-photo-preview img,
+.user-avatar-badge img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 50%; }
+.user-avatar-badge.has-photo { overflow: hidden; background: #fff; }
+
+.profile-card { max-width: 420px; }
+.profile-form { display: flex; flex-direction: column; gap: 0.7rem; }
+.profile-photo-row { display: flex; align-items: center; gap: 1rem; }
+.profile-photo-preview {
+    width: 72px; height: 72px; flex: 0 0 72px;
+    border-radius: 50%;
+    background: var(--slate-900);
+    color: var(--accent-emerald);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.6rem; font-weight: 700;
+    overflow: hidden;
+    box-shadow: 0 0 0 3px var(--green-soft);
+}
+.profile-photo-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.profile-photo-btn { cursor: pointer; }
+.profile-hint { font-size: 0.68rem; color: var(--text-muted); width: 100%; }
+.profile-form .um-field input[type="text"],
+.profile-form .um-field input[type="password"] {
+    width: 100%;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 0.85rem;
+    background: var(--surface-soft);
+}
+.profile-form .um-field input:disabled { opacity: 0.65; }
+.profile-form .um-field small { font-weight: 400; color: var(--text-muted); }
+.profile-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
