@@ -601,7 +601,7 @@ body {
     align-items: center;
 }
 
-.sub-dashboards-grid { scroll-margin-top: 80px; }
+.sub-dashboards-grid { scroll-margin-top: 120px; }
 
 /* ==========================================================================
    3. DASHBOARD CONTENT & GRID LAYOUTS
@@ -1706,9 +1706,17 @@ tbody tr:hover { background-color: rgba(0, 179, 125, 0.09); }
     flex-wrap: nowrap;
     gap: 0.3rem;
     overflow-x: auto;
-    padding: 0.35rem 0 0.2rem;
+    padding: 0.35rem 2rem;
     scrollbar-width: thin;
+    position: sticky;
+    top: var(--nav-h, 64px);
+    z-index: 99;
+    background: #fff;
+    border-bottom: 1px solid var(--card-border);
+    box-shadow: 0 2px 8px rgba(11, 18, 32, 0.08);
 }
+.quick-nav:empty { display: none; }
+@media (max-width: 900px) { .quick-nav { padding: 0.35rem 1rem; } }
 .quick-nav-chip {
     flex: 0 0 auto;
     font-family: inherit;
