@@ -95,7 +95,8 @@
                     </div>
                 </div>
                 <div class="nav-divider"></div>
-                <div class="user-badge">
+                <div class="user-badge" id="user-badge" title="Click to edit your profile" style="cursor: pointer;">
+                    <span id="user-avatar-mini" class="user-avatar-mini"></span>
                     Welcome, <span id="user-display-name">Admin</span>
                     <span id="user-display-role" class="role-badge">Admin</span>
                 </div>
@@ -146,6 +147,9 @@
                 <p>Live Overview of Service Request Statuses & Technician Load</p>
                 <div id="last-updated-info" class="last-updated-info"></div>
             </div>
+
+            <!-- QUICK LINKS TO EACH TABLE -->
+            <div id="quick-nav" class="quick-nav" aria-label="Quick links"></div>
 
             <!-- KPI SUMMARY CARDS -->
             <div class="kpi-grid" data-perm="kpi">
@@ -376,6 +380,21 @@
                         </div>
                     </div>
                 </div>
+
+                <div class="sub-dashboards-three-col perm-group">
+                    <div class="summary-card" data-perm="dailyCloseTech">
+                        <div class="card-header flex-between">
+                            <h3>Daily Closing - Tech Wise</h3>
+                            <button class="btn-capture-table" onclick="captureTableToClipboard('table-daily-closing-tech')" title="Capture Image">📷</button>
+                        </div>
+                        <div class="table-wrapper tech-matrix-wrapper">
+                            <table id="table-daily-closing-tech" class="compact-matrix">
+                                <thead></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- DETAILED OVERVIEW TABLE -->
@@ -494,6 +513,54 @@
     </div>
 
     <!-- JOB CARD PREVIEW MODAL -->
+    <!-- USER PROFILE MODAL -->
+    <div id="profile-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-card profile-card">
+            <div class="modal-header">
+                <h3>My Profile</h3>
+                <button type="button" class="btn-close" id="btn-close-profile">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="profile-form" class="profile-form" autocomplete="off">
+                    <div class="profile-photo-row">
+                        <div id="pf-photo-preview" class="profile-photo-preview"></div>
+                        <div class="profile-photo-actions">
+                            <label class="btn-action profile-photo-btn" for="pf-photo-input">Upload Photo</label>
+                            <input type="file" id="pf-photo-input" accept="image/*" style="display: none;">
+                            <button type="button" class="btn-action" id="pf-photo-remove">Remove</button>
+                            <span class="profile-hint">Auto-resized to a tiny image.</span>
+                        </div>
+                    </div>
+                    <div class="um-field">
+                        <label>User ID</label>
+                        <input type="text" id="pf-userid" disabled>
+                    </div>
+                    <div class="um-field">
+                        <label>User Name</label>
+                        <input type="text" id="pf-name" placeholder="Your name">
+                    </div>
+                    <div class="um-field">
+                        <label>New Password <small>(leave blank to keep)</small></label>
+                        <input type="password" id="pf-new-pw" autocomplete="new-password">
+                    </div>
+                    <div class="um-field">
+                        <label>Confirm New Password</label>
+                        <input type="password" id="pf-confirm-pw" autocomplete="new-password">
+                    </div>
+                    <div class="um-field">
+                        <label>Current Password <small>(required to save)</small></label>
+                        <input type="password" id="pf-current-pw" autocomplete="current-password">
+                    </div>
+                    <div id="pf-status" class="um-save-status"></div>
+                    <div class="profile-actions">
+                        <button type="submit" class="btn-action" id="btn-save-profile" style="background-color: var(--primary-green); color: white;">Save</button>
+                        <button type="button" class="btn-action" id="btn-cancel-profile">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <div id="job-card-modal" class="modal-overlay" style="display: none;">
         <div class="job-card-modal-container">
             <div class="job-card-modal-header">
