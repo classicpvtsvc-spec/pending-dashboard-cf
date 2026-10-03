@@ -2687,7 +2687,8 @@ function buildQuickNav() {
             const el = document.querySelector(item.sel);
             if (!el || el.offsetParent === null) return;
             const nav = document.querySelector('.top-nav');
-            const offset = (nav ? nav.offsetHeight : 70) + 10;
+            const qn = document.getElementById('quick-nav');
+            const offset = (nav ? nav.offsetHeight : 70) + (qn ? qn.offsetHeight : 0) + 10;
             const top = el.getBoundingClientRect().top + window.scrollY - offset;
             window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
         });
@@ -2889,4 +2890,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const initial = (displayName(currentUser) || '?').trim().charAt(0).toUpperCase();
         setAvatarEl(document.getElementById('pf-photo-preview'), '', `<span>${escapeEmailHtml(initial)}</span>`);
     });
+});
+
+
+/* keep the chip bar glued right under the (sticky) filter bar at any screen size */
+function syncNavHeight() {
+    const nav = document.querySelector('.top-nav');
+    if (nav && nav.offsetHeight) document.documentElement.style.setProperty('--nav-h', (nav.offsetHeight - 1) + 'px');
+}
+window.addEventListener('resize', syncNavHeight);
+document.addEventListener('DOMContentLoaded', () => {
+    const nav = document.querySelector('.top-nav');
+    if (nav && window.ResizeObserver) new ResizeObserver(syncNavHeight).observe(nav);
+    syncNavHeight();
 });
