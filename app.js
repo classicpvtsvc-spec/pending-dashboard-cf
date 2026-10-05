@@ -113,9 +113,11 @@ const SERVICE_TYPE_MAP = {
     'Carry In': 'CI',
     'Dealer Inspection': 'DI',
     'In Home': 'IH',
-    'Installation': 'IS',
+    'Installation': 'IN',
     'Marketing Support': 'MS',
-    'Pickup & Delivery': 'PD'
+    'Pickup & Delivery': 'PD',
+    'Cleaning': 'CL',
+    'Maintenance': 'MN'
 };
 
 const WARRANTY_TYPE_MAP = {
@@ -845,7 +847,9 @@ function buildRawDataFromRows(headers, rows) {
         };
 
         const rawServiceType = getRowVal(row, colIdx.serviceType) || '';
-        const serviceTypeCode = SERVICE_TYPE_MAP[rawServiceType] || rawServiceType;
+        const serviceTypeCode = SERVICE_TYPE_MAP[rawServiceType]
+            || SERVICE_TYPE_MAP[Object.keys(SERVICE_TYPE_MAP).find(k => k.toLowerCase() === rawServiceType.trim().toLowerCase())]
+            || rawServiceType;
 
         const rawWarrantyType = getRowVal(row, colIdx.warrantyType) || '';
         const warrantyTypeCode = WARRANTY_TYPE_MAP[rawWarrantyType] || WARRANTY_TYPE_MAP[rawWarrantyType.trim()] || rawWarrantyType;
@@ -1171,13 +1175,13 @@ function renderAgeWiseMatrix(groupByKey, tableId) {
    ========================================================================== */
 const TECH_PRINT_COLS = [
     { title: 'JOB NO:',      width: 'data', value: r => r.jobNo },
-    { title: 'MODEL',        width: 12,     value: r => r.model },
+    { title: 'MODEL',        width: 10,     value: r => r.model },
     { title: 'NAME:',        width: 10,     value: r => r.userName },
     { title: 'MOB:',         width: 'data', value: r => r.mobileNo },
     { title: 'TEL:',         width: 'data', value: r => r.homeTel },
     { title: 'AREA',         width: 8,      value: r => r.area },
     { title: 'W-TYPE',       width: 8,      value: r => r.warrantyType },
-    { title: 'PEND-R',       width: 13,     value: r => r.pendReason },
+    { title: 'PEND-R',       width: 15,     value: r => r.pendReason },
     { title: 'Part Details', width: null,   value: r => techPrintPartDetails(r), centerHead: true }
 ];
 
@@ -1586,13 +1590,14 @@ function renderDetailedTable(records) {
             <td>${r.brand}</td>
             <td>${r.technician}</td>
             <td>${r.pendReason}</td>
-            <td>${formatPartStatus(r.part1, r.part1No, 1)}</td>
-            <td>${formatPartStatus(r.part2, r.part2No, 2)}</td>
-            <td>${formatPartStatus(r.part3, r.part3No, 3)}</td>
-            <td>${formatPartStatus(r.part4, r.part4No, 4)}</td>
-            <td>${formatPartStatus(r.part5, r.part5No, 5)}</td>
-            <td>${formatPartStatus(r.part6, r.part6No, 6)}</td>
-            <td>${formatPartStatus(r.part7, r.part7No, 7)}</td>
+            <td class="text-center">${r.serviceType || ''}</td>
+            <td class="p-col">${formatPartStatus(r.part1, r.part1No, 1)}</td>
+            <td class="p-col">${formatPartStatus(r.part2, r.part2No, 2)}</td>
+            <td class="p-col">${formatPartStatus(r.part3, r.part3No, 3)}</td>
+            <td class="p-col">${formatPartStatus(r.part4, r.part4No, 4)}</td>
+            <td class="p-col">${formatPartStatus(r.part5, r.part5No, 5)}</td>
+            <td class="p-col">${formatPartStatus(r.part6, r.part6No, 6)}</td>
+            <td class="p-col">${formatPartStatus(r.part7, r.part7No, 7)}</td>
         `;
         tbody.appendChild(tr);
     });
@@ -1619,13 +1624,25 @@ function formatPartStatus(status, partNo, partIndex) {
     const displayPartNo = (partNo && partNo !== '0') ? partNo : 'N/A';
     const safePartNo = displayPartNo.replace(/'/g, "\\'");
 
+    // Hover shows the part number popup (click still works on touch screens)
     return `<span class="status-badge ${cls} part-status-clickable" 
-                  title="Click to view Part Number" 
+                  onmouseenter="showPartPopup(event, '${safePartNo}', ${partIndex}, '${s}')"
+                  onmouseleave="schedulePartPopupClose()"
                   onclick="showPartPopup(event, '${safePartNo}', ${partIndex}, '${s}')">${s}</span>`;
+}
+
+let partPopupTimer = null;
+function schedulePartPopupClose() {
+    clearTimeout(partPopupTimer);
+    partPopupTimer = setTimeout(() => {
+        const p = document.getElementById('active-part-popup');
+        if (p) p.remove();
+    }, 250);   // short delay so the mouse can move onto the popup (to press Copy)
 }
 
 function showPartPopup(event, partNo, partIndex, status) {
     event.stopPropagation();
+    clearTimeout(partPopupTimer);
 
     const existingPopup = document.getElementById('active-part-popup');
     if (existingPopup) {
@@ -1638,6 +1655,8 @@ function showPartPopup(event, partNo, partIndex, status) {
     const popup = document.createElement('div');
     popup.id = 'active-part-popup';
     popup.className = 'part-popup';
+    popup.addEventListener('mouseenter', () => clearTimeout(partPopupTimer));
+    popup.addEventListener('mouseleave', schedulePartPopupClose);
 
     popup.innerHTML = `
         <div class="part-popup-header">
