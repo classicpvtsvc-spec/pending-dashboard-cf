@@ -492,8 +492,8 @@ body {
 
 /* Buttons (nav context = dark, ghost style) */
 .btn-action, .btn-upload, .btn-logout {
-    padding: 0.45rem 0.85rem;
-    font-size: 0.82rem;
+    padding: 0.20rem 0.30rem;
+    font-size: 0.80rem;
     font-weight: 600;
     font-family: inherit;
     border-radius: var(--radius-sm);
@@ -893,7 +893,7 @@ tbody tr:hover { background-color: rgba(0, 179, 125, 0.09); }
     border: 1px solid var(--slate-200);
 }
 
-#detailed-section { scroll-margin-top: 80px; }
+#detailed-section { scroll-margin-top: 170px; }
 
 /* ==========================================================================
    5. USER MANAGEMENT MODAL
@@ -1706,9 +1706,10 @@ tbody tr:hover { background-color: rgba(0, 179, 125, 0.09); }
 .quick-nav {
     display: flex;
     flex-wrap: nowrap;
+    align-items: center;
     gap: 0.3rem;
     overflow-x: auto;
-    padding: 0.35rem 2rem;
+    padding: 0.32rem 8rem;
     scrollbar-width: thin;
     position: sticky;
     top: var(--nav-h, 64px);
@@ -1725,7 +1726,7 @@ tbody tr:hover { background-color: rgba(0, 179, 125, 0.09); }
     font-size: 0.68rem;
     font-weight: 600;
     line-height: 1;
-    padding: 0.28rem 0.55rem;
+    padding: 0.28rem 0.10rem;
     border: 1px solid var(--accent-emerald);
     background: #fff;
     color: var(--slate-800);
@@ -1811,3 +1812,74 @@ th.avg-col { color: #fff; background: var(--slate-800); }
 .profile-form .um-field input:disabled { opacity: 0.65; }
 .profile-form .um-field small { font-weight: 400; color: var(--text-muted); }
 .profile-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
+
+
+/* ==========================================================================
+   QUICK BAR = quick-link chips (left, scrollable) + job search (right, fixed)
+   ========================================================================== */
+.quick-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.35rem 2rem 0.35rem 8rem;
+    position: sticky;
+    top: var(--nav-h, 64px);
+    z-index: 99;
+    background: #fff;
+    border-bottom: 1px solid var(--card-border);
+    box-shadow: 0 2px 8px rgba(11, 18, 32, 0.08);
+}
+.quick-bar .quick-nav {
+    position: static;
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0;
+    background: none;
+    border: 0;
+    box-shadow: none;
+}
+.job-search { flex: 0 0 auto; display: flex; align-items: center; gap: 0.35rem; margin-left: auto; }
+.js-box { position: relative; }
+.js-box input {
+    width: 190px;
+    font-family: inherit;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.6rem;
+    border: 1px solid var(--slate-300);
+    border-radius: 999px;
+    outline: none;
+    background: var(--surface-soft);
+}
+.js-box input:focus { border-color: var(--accent-emerald); background: #fff; box-shadow: 0 0 0 3px rgba(0,179,125,0.18); }
+.js-btn {
+    font-family: inherit;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.3rem 0.8rem;
+    border: 1px solid var(--primary-green);
+    background: var(--primary-green);
+    color: #fff;
+    border-radius: 999px;
+    cursor: pointer;
+}
+.js-btn:hover { background: var(--primary-green-hover); }
+.js-list {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    min-width: 100%;
+    max-height: 240px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid var(--slate-300);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-md);
+    z-index: 120;
+}
+.js-item { padding: 0.3rem 0.6rem; font-size: 0.75rem; cursor: pointer; white-space: nowrap; }
+.js-item:hover, .js-item.active { background: var(--green-soft); color: var(--primary-green); font-weight: 700; }
+.js-note { padding: 0.35rem 0.6rem; font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; }
+@media (max-width: 900px) {
+    .quick-bar { padding: 0.35rem 1rem; flex-wrap: wrap; }
+    .quick-bar .quick-nav { flex-basis: 100%; }
+}
