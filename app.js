@@ -1160,6 +1160,48 @@ function renderAgeWiseMatrix(groupByKey, tableId) {
     });
 }
 
+/* ==========================================================================
+   TECHNICIAN JOB PRINT LAYOUT
+   --------------------------------------------------------------------------
+   To change a column width: edit the `width` of that column below.
+     width: 12      -> fixed width of about 12 characters (bigger number = wider column)
+     width: 'data'  -> width follows the longest value in that column (automatic)
+     width: null    -> takes all the remaining space of the page
+   Text longer than the column width is simply cut off (no wrapping).
+   ========================================================================== */
+const TECH_PRINT_COLS = [
+    { title: 'JOB NO:',      width: 'data', value: r => r.jobNo },
+    { title: 'MODEL',        width: 12,     value: r => r.model },
+    { title: 'NAME:',        width: 10,     value: r => r.userName },
+    { title: 'MOB:',         width: 'data', value: r => r.mobileNo },
+    { title: 'TEL:',         width: 'data', value: r => r.homeTel },
+    { title: 'AREA',         width: 8,      value: r => r.area },
+    { title: 'W-TYPE',       width: 8,      value: r => r.warrantyType },
+    { title: 'PEND-R',       width: 13,     value: r => r.pendReason },
+    { title: 'Part Details', width: null,   value: r => techPrintPartDetails(r), centerHead: true }
+];
+
+// Part status -> code shown in brackets. CANC (cancelled) parts are not printed.
+const TECH_PRINT_PART_CODES = { PEND: 'P', CLOSE: 'C', OPEN: 'O', RNTD: 'R' };
+const TECH_PRINT_MAX_PARTS = 3;   // Part 1 to Part 3
+// Row order on the Tech print:  'age'    = oldest job first (age high to low) for the whole list
+//                                'reason' = grouped by pending reason, then age high to low inside each group
+const TECH_PRINT_SORT = 'age';
+const TECH_PRINT_FONT_PX = 13;     // text size on the Tech print (was 11). Bigger number = bigger text; column widths grow with it.
+
+function techPrintPartDetails(r) {
+    const out = [];
+    for (let i = 1; i <= TECH_PRINT_MAX_PARTS; i++) {
+        const no = String(r['part' + i + 'No'] || '').trim();
+        if (!no || no === '-') continue;
+        const status = String(r['part' + i] || '').trim().toUpperCase();
+        if (status === 'CANC') continue;
+        const code = TECH_PRINT_PART_CODES[status];
+        out.push(code ? `${no}(${code})` : no);
+    }
+    return out.length ? out.join(', ') : '-';
+}
+
 function printTechnicianData(techName) {
     let techJobs = filteredData.filter(r => r.technician === techName);
 
@@ -1292,9 +1334,12 @@ function printTechnicianData(techName) {
 
         // Sort records into a single merged dataset ordered by PEND_REASON rank and then by Days (Ageing)
         printJobs.sort((a, b) => {
-            const rankDiff = reasonRank(normalizeReason(a.pendReason)) - reasonRank(normalizeReason(b.pendReason));
-            if (rankDiff !== 0) return rankDiff;
-            return (Number(b.days) || 0) - (Number(a.days) || 0);
+            if (TECH_PRINT_SORT === 'reason') {
+                const rankDiff = reasonRank(normalizeReason(a.pendReason)) - reasonRank(normalizeReason(b.pendReason));
+                if (rankDiff !== 0) return rankDiff;
+            }
+            const ageDiff = (Number(b.days) || 0) - (Number(a.days) || 0);   // age high to low
+            return ageDiff || String(a.jobNo).localeCompare(String(b.jobNo));
         });
 
         const escapeHtml = (value) => String(value ?? '')
@@ -1314,69 +1359,45 @@ function printTechnicianData(techName) {
             return;
         }
 
+        // Column widths: fixed (characters) or following the longest value in the data.
+        const colWidths = TECH_PRINT_COLS.map(col => {
+            if (col.width === 'data') {
+                const longest = Math.max(col.title.length, ...printJobs.map(r => String(col.value(r) ?? '').length));
+                return Math.ceil(longest * 1.15) + 1;
+            }
+            return col.width;   // number, or null = remaining space
+        });
+        const colGroup = colWidths.map(w => w ? `<col style="width:${w}ch">` : '<col>').join('');
+        const headRow = TECH_PRINT_COLS.map(col => `<th${col.centerHead ? ' class="c"' : ''}>${escapeHtml(col.title)}</th>`).join('');
+        const bodyRows = printJobs.map(r => '<tr>' + TECH_PRINT_COLS.map(col => {
+            const text = escapeHtml(col.value(r));
+            return `<td>${text}</td>`;
+        }).join('') + '</tr>').join('');
+
         printWindow.document.write(`
             <!DOCTYPE html>
             <html>
             <head>
-                <title>Technician Pending Jobs - ${escapeHtml(techName)}</title>
+                <title>${escapeHtml(todayStr)} - ${escapeHtml(techName)}</title>
                 <style>
                     @page { size: A4 landscape; margin: 8mm; }
-                    body { font-family: Arial, sans-serif; font-size: 10px; color: #000; margin: 0; padding: 0; }
-                    .print-header { font-size: 13px; font-weight: bold; margin-bottom: 4px; border-bottom: 1px solid #000; padding-bottom: 4px; }
-                    .print-filter-summary { font-size: 9px; margin-bottom: 7px; color: #333; }
+                    body { font-family: Arial, sans-serif; font-size: ${TECH_PRINT_FONT_PX}px; color: #000; margin: 0; padding: 0; }
+                    .print-header { font-size: ${TECH_PRINT_FONT_PX + 2}px; font-weight: bold; margin-bottom: 6px; }
+                    .print-header span { margin-right: 40px; }
                     table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-                    th, td { border: 1px solid #000; padding: 4px 3px; word-wrap: break-word; overflow: hidden; text-overflow: ellipsis; font-size: 12px; line-height: 1.2; vertical-align: middle; }
-                    th { background-color: #f0f0f0; font-weight: bold; text-align: left; }
-                    .col-no { width: 3%; text-align: center; }
-                    .col-age { width: 3%; text-align: center; }
-                    .col-job { width: 12%; }
-                    .col-name { width: 11%; }
-                    .col-tel { width: 8%; }
-                    .col-mob { width: 8%; }
-                    .col-area { width: 9%; }
-                    .col-model { width: 11%; }
-                    .col-wtype { width: 5%; text-align: center; }
-                    .col-stype { width: 5%; text-align: center; }
-                    .col-reason { width: 25%; }
+                    th, td { border: 1px solid #000; padding: 2px 3px; font-size: ${TECH_PRINT_FONT_PX}px; line-height: ${TECH_PRINT_FONT_PX + 3}px; height: ${TECH_PRINT_FONT_PX + 5}px;
+                             white-space: nowrap; overflow: hidden; text-overflow: clip; text-align: left; vertical-align: middle; }
+                    th { background-color: #f0f0f0; font-weight: bold; }
+                    th.c, td.c { text-align: center; }
                     tr { break-inside: avoid; }
                 </style>
             </head>
             <body>
-                <div class="print-header">${escapeHtml(todayStr)} | ${escapeHtml(techName)} | PEND_REASON Pending Jobs</div>
-                <div class="print-filter-summary">Selected filters: ${escapeHtml(filterSummary)}</div>
+                <div class="print-header"><span>${escapeHtml(todayStr)}</span><span>${escapeHtml(techName)}</span></div>
                 <table>
-                    <thead>
-                        <tr>
-                            <th class="col-no">No:</th>
-                            <th class="col-age">Age</th>
-                            <th class="col-job">JOB NO:</th>
-                            <th class="col-name">NAME:</th>
-                            <th class="col-tel">TEL:</th>
-                            <th class="col-mob">MOB:</th>
-                            <th class="col-area">AREA</th>
-                            <th class="col-model">MODEL</th>
-                            <th class="col-wtype">W-TYPE</th>
-                            <th class="col-stype">S-TYPE</th>
-                            <th class="col-reason">PEND_REASON</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${printJobs.map((r, idx) => `
-                            <tr>
-                                <td class="col-no">${idx + 1}</td>
-                                <td class="col-age">${escapeHtml(r.days)}</td>
-                                <td class="col-job">${escapeHtml(r.jobNo)}</td>
-                                <td class="col-name">${escapeHtml(r.userName)}</td>
-                                <td class="col-tel">${escapeHtml(r.homeTel)}</td>
-                                <td class="col-mob">${escapeHtml(r.mobileNo)}</td>
-                                <td class="col-area">${escapeHtml(r.area)}</td>
-                                <td class="col-model">${escapeHtml(r.model)}</td>
-                                <td class="col-wtype">${escapeHtml(r.warrantyType)}</td>
-                                <td class="col-stype">${escapeHtml(r.serviceType)}</td>
-                                <td class="col-reason">${escapeHtml(r.pendReason)}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
+                    <colgroup>${colGroup}</colgroup>
+                    <thead><tr>${headRow}</tr></thead>
+                    <tbody>${bodyRows}</tbody>
                 </table>
                 <script>
                     window.onload = function() { window.print(); };
@@ -2674,6 +2695,8 @@ function buildQuickNav() {
     const box = document.getElementById('quick-nav');
     if (!box || !currentUser) return;
     box.innerHTML = '';
+    const searchForm = document.getElementById('job-search');
+    if (searchForm) searchForm.style.display = hasPerm('detailed') ? '' : 'none';
     QUICK_NAV_ITEMS.forEach(item => {
         if (!hasPerm(item.perm)) return;
         const target = document.querySelector(item.sel);
@@ -2687,7 +2710,7 @@ function buildQuickNav() {
             const el = document.querySelector(item.sel);
             if (!el || el.offsetParent === null) return;
             const nav = document.querySelector('.top-nav');
-            const qn = document.getElementById('quick-nav');
+            const qn = document.getElementById('quick-bar') || document.getElementById('quick-nav');
             const offset = (nav ? nav.offsetHeight : 70) + (qn ? qn.offsetHeight : 0) + 10;
             const top = el.getBoundingClientRect().top + window.scrollY - offset;
             window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
@@ -2903,4 +2926,101 @@ document.addEventListener('DOMContentLoaded', () => {
     const nav = document.querySelector('.top-nav');
     if (nav && window.ResizeObserver) new ResizeObserver(syncNavHeight).observe(nav);
     syncNavHeight();
+});
+
+
+/* ==========================================================================
+   JOB NUMBER SEARCH (quick bar, right end)
+   Type at least 5 characters of the END of the job number, pick the full job
+   number from the list, press Search -> it is shown in "Detailed Job Overview".
+   Supervisors only search the jobs of their own branch.
+   ========================================================================== */
+const JOB_SEARCH_MIN = 5;
+let jobSearchSelected = '';
+
+function jobSearchPool() {
+    if (!currentUser) return [];
+    if (currentUser.role === 'Supervisor' && currentUser.branch && currentUser.branch !== 'ALL') {
+        const b = currentUser.branch.toLowerCase();
+        return rawData.filter(r => String(r.branch || '').toLowerCase() === b);
+    }
+    return rawData;
+}
+
+function jobSearchMatches(text) {
+    const q = String(text || '').trim().toLowerCase();
+    if (q.length < JOB_SEARCH_MIN) return [];
+    const seen = new Set();
+    jobSearchPool().forEach(r => {
+        if (String(r.jobNo).toLowerCase().endsWith(q)) seen.add(r.jobNo);
+    });
+    return Array.from(seen).sort();
+}
+
+function renderJobSearchList() {
+    const input = document.getElementById('job-search-input');
+    const list = document.getElementById('job-search-list');
+    if (!input || !list) return;
+    const q = input.value.trim();
+    jobSearchSelected = '';
+    if (!q) { list.style.display = 'none'; return; }
+    list.innerHTML = '';
+    if (q.length < JOB_SEARCH_MIN) {
+        list.innerHTML = `<div class="js-note">Type at least ${JOB_SEARCH_MIN} characters (end of job no.)</div>`;
+    } else {
+        const matches = jobSearchMatches(q);
+        if (matches.length === 0) {
+            list.innerHTML = '<div class="js-note">No matching job number</div>';
+        } else {
+            matches.slice(0, 50).forEach(jobNo => {
+                const item = document.createElement('div');
+                item.className = 'js-item';
+                item.textContent = jobNo;
+                item.addEventListener('mousedown', e => {
+                    e.preventDefault();             // keep focus, avoid blur closing the list first
+                    input.value = jobNo;
+                    jobSearchSelected = jobNo;
+                    list.style.display = 'none';
+                });
+                list.appendChild(item);
+            });
+        }
+    }
+    list.style.display = 'block';
+}
+
+function runJobSearch() {
+    const input = document.getElementById('job-search-input');
+    const list = document.getElementById('job-search-list');
+    if (!input || !list) return;
+    let jobNo = jobSearchSelected;
+    if (!jobNo) {
+        const matches = jobSearchMatches(input.value);
+        if (matches.length === 1) jobNo = matches[0];
+        else {
+            renderJobSearchList();
+            if (matches.length > 1) list.insertAdjacentHTML('afterbegin', '<div class="js-note">Select a job number from the list</div>');
+            return;
+        }
+    }
+    const records = jobSearchPool().filter(r => r.jobNo === jobNo);
+    if (records.length === 0) return;
+    list.style.display = 'none';
+    input.value = jobNo;
+    jobSearchSelected = jobNo;
+    document.getElementById('detailed-filter-label').textContent = `Showing: Job No ${jobNo}`;
+    currentDetailedRecords = records;
+    renderDetailedTable(records);
+    scrollToDetailedOverview();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('job-search');
+    const input = document.getElementById('job-search-input');
+    const list = document.getElementById('job-search-list');
+    if (!form || !input) return;
+    input.addEventListener('input', renderJobSearchList);
+    input.addEventListener('focus', () => { if (input.value.trim() && !jobSearchSelected) renderJobSearchList(); });
+    input.addEventListener('blur', () => setTimeout(() => { list.style.display = 'none'; }, 150));
+    form.addEventListener('submit', e => { e.preventDefault(); runJobSearch(); });
 });
