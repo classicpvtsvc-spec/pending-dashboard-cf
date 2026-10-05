@@ -142,7 +142,16 @@
         </nav>
 
         <!-- QUICK LINKS TO EACH TABLE (stays under the filter bar) -->
-        <div id="quick-nav" class="quick-nav" aria-label="Quick links"></div>
+        <div id="quick-bar" class="quick-bar">
+            <div id="quick-nav" class="quick-nav" aria-label="Quick links"></div>
+            <form id="job-search" class="job-search" autocomplete="off">
+                <div class="js-box">
+                    <input type="text" id="job-search-input" placeholder="Job No (last 5+ digits)" aria-label="Search job number">
+                    <div id="job-search-list" class="js-list" style="display: none;"></div>
+                </div>
+                <button type="submit" id="job-search-btn" class="js-btn">Search</button>
+            </form>
+        </div>
 
         <div class="dashboard-content">
             <div class="page-title-banner">
