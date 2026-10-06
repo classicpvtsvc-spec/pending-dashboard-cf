@@ -1175,13 +1175,13 @@ function renderAgeWiseMatrix(groupByKey, tableId) {
    ========================================================================== */
 const TECH_PRINT_COLS = [
     { title: 'JOB NO:',      width: 'data', value: r => r.jobNo },
-    { title: 'MODEL',        width: 10,     value: r => r.model },
+    { title: 'MODEL',        width: 17,     value: r => r.model },
     { title: 'NAME:',        width: 10,     value: r => r.userName },
     { title: 'MOB:',         width: 'data', value: r => r.mobileNo },
     { title: 'TEL:',         width: 'data', value: r => r.homeTel },
     { title: 'AREA',         width: 8,      value: r => r.area },
     { title: 'W-TYPE',       width: 8,      value: r => r.warrantyType },
-    { title: 'PEND-R',       width: 15,     value: r => r.pendReason },
+    { title: 'PEND-R',       width: 10,     value: r => r.pendReason },
     { title: 'Part Details', width: null,   value: r => techPrintPartDetails(r), centerHead: true }
 ];
 
