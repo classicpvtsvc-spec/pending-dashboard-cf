@@ -458,6 +458,9 @@ function formatDateToDDMM(isoDateStr) {
     return isoDateStr;
 }
 
+// Tech-wise table: how much of the longest technician name to show (percent). Raise it to show more of each name.
+const TECH_NAME_SHOW_PERCENT = 90;
+
 function fmtAvg(v) {
     return Number.isInteger(v) ? String(v) : v.toFixed(1);
 }
@@ -529,7 +532,17 @@ function renderMatrixTable(dataset, tableContainerId, rowLabel = 'Branch', rowKe
     }
 
     tbodyHtml += '</tbody>';
-    tableElem.innerHTML = theadHtml + tbodyHtml;
+    // Tech-wise table: give the name column room for TECH_NAME_SHOW_PERCENT of the longest name.
+    // Name + Average columns get fixed widths; the date columns share the rest, so the table's total width never changes.
+    let colGroup = '';
+    if (truncateNames && rows.length) {
+        const longest = Math.max(...rows.map(r => String(r).length));
+        const nameCh = Math.ceil(longest * (TECH_NAME_SHOW_PERCENT / 100) * 1.1) + 1;
+        tableElem.style.minWidth = `${nameCh + 6 + dates.length * 4.5}ch`;   // on narrow screens the table scrolls instead of squeezing
+        colGroup = `<colgroup><col style="width:${nameCh}ch">${dates.map(() => '<col>').join('')}<col style="width:6ch"></colgroup>`;
+    }
+
+    tableElem.innerHTML = colGroup + theadHtml + tbodyHtml;
 }
 
 function renderBrandMatrixTable(dataset, tableContainerId) {
@@ -891,6 +904,7 @@ function buildRawDataFromRows(headers, rows) {
             brand: getRowVal(row, colIdx.brand) || 'Unknown',
             technician: getRowVal(row, colIdx.technician) || 'Unassigned',
             warrantyType: warrantyTypeCode || 'Unspecified',
+            warrantyRaw: rawWarrantyType,
             serviceType: serviceTypeCode,
             pendReason: pendReasonCode,
             rawPendReason: rawPendReason,
@@ -1175,13 +1189,13 @@ function renderAgeWiseMatrix(groupByKey, tableId) {
    ========================================================================== */
 const TECH_PRINT_COLS = [
     { title: 'JOB NO:',      width: 'data', value: r => r.jobNo },
-    { title: 'MODEL',        width: 17,     value: r => r.model },
+    { title: 'MODEL',        width: 10,     value: r => r.model },
     { title: 'NAME:',        width: 10,     value: r => r.userName },
     { title: 'MOB:',         width: 'data', value: r => r.mobileNo },
     { title: 'TEL:',         width: 'data', value: r => r.homeTel },
     { title: 'AREA',         width: 8,      value: r => r.area },
     { title: 'W-TYPE',       width: 8,      value: r => r.warrantyType },
-    { title: 'PEND-R',       width: 10,     value: r => r.pendReason },
+    { title: 'PEND-R',       width: 15,     value: r => r.pendReason },
     { title: 'Part Details', width: null,   value: r => techPrintPartDetails(r), centerHead: true }
 ];
 
@@ -1585,12 +1599,13 @@ function renderDetailedTable(records) {
         tr.innerHTML = `
             <td class="clickable-job-no" onclick="openJobCardModal('${r.jobNo}')">${r.jobNo}</td>
             <td>${r.branch}</td>
+            <td class="area-col" title="${escapeEmailHtml(r.area || '')}">${escapeEmailHtml(r.area || '')}</td>
             <td class="text-right bold">${r.days}</td>
+            <td class="text-center">${r.serviceType || ''}</td>
             <td>${r.model}</td>
             <td>${r.brand}</td>
             <td>${r.technician}</td>
             <td>${r.pendReason}</td>
-            <td class="text-center">${r.serviceType || ''}</td>
             <td class="p-col">${formatPartStatus(r.part1, r.part1No, 1)}</td>
             <td class="p-col">${formatPartStatus(r.part2, r.part2No, 2)}</td>
             <td class="p-col">${formatPartStatus(r.part3, r.part3No, 3)}</td>
@@ -1916,6 +1931,8 @@ function openJobCardModal(jobNo) {
     document.getElementById('jc-home-tel').textContent = rec.homeTel || '-';
     document.getElementById('jc-mobile-no').textContent = rec.mobileNo || '-';
     document.getElementById('jc-model-cd').textContent = rec.model || '-';
+    document.getElementById('jc-area').textContent = rec.area || '-';
+    document.getElementById('jc-warranty-type').textContent = rec.warrantyRaw || rec.warrantyType || '-';
     document.getElementById('jc-pend-reason').textContent = rec.rawPendReason || rec.pendReason || '-';
     document.getElementById('jc-cust-remark').textContent = rec.customerRemark || '-';
     document.getElementById('jc-rcpt-remark').textContent = rec.receptionRemark || '-';
