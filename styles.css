@@ -1266,7 +1266,7 @@ tbody tr:hover { background-color: rgba(0, 179, 125, 0.09); }
     display: flex;
     flex-direction: column;
     height: auto;
-    max-height: 92vh;
+    max-height: 80vh;
 }
 
 .job-card-modal-header {
@@ -1340,7 +1340,7 @@ tbody tr:hover { background-color: rgba(0, 179, 125, 0.09); }
 .job-card-brand-tag {
     background-color: var(--accent-emerald);
     color: #04261a;
-    padding: 2px 10px;
+    padding: 2px 5px;
     border-radius: 4px;
     font-size: 0.8rem;
     font-weight: 800;
@@ -1353,7 +1353,7 @@ tbody tr:hover { background-color: rgba(0, 179, 125, 0.09); }
 }
 
 .job-card-table td, .job-card-table th {
-    padding: 0.45rem 0.65rem;
+    padding: 0.45rem 0.30rem;
     border: 1px solid var(--slate-300);
     font-size: 0.8rem;
     word-break: break-word;
@@ -1746,14 +1746,10 @@ th.avg-col, td.avg-col {
 }
 th.avg-col { color: #fff; background: var(--slate-800); }
 
-.compact-matrix { table-layout: auto; font-size: 0.7rem; }
+.compact-matrix { table-layout: fixed; font-size: 0.7rem; }
 .compact-matrix th, .compact-matrix td { padding: 0.1rem 0.12rem; }
 .compact-matrix th { font-size: 0.66rem; letter-spacing: 0; }
-.compact-matrix td.name-cell,
-.compact-matrix th:first-child {
-    max-width: 90px;
-    min-width: 60px;
-    width: 90px;
+.compact-matrix td.name-cell {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1899,3 +1895,7 @@ th.avg-col { color: #fff; background: var(--slate-800); }
     .quick-bar .quick-nav { gap: 0.2rem; }
     .js-box input { width: 150px; }
 }
+
+
+/* Detailed Job Overview: Area column is capped so the table keeps its total width (full name on hover) */
+#table-detailed td.area-col { max-width: 90px; overflow: hidden; text-overflow: ellipsis; }
