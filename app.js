@@ -38,6 +38,7 @@ const PERM_DEFS = [
     { key: 'pendReason',     label: 'Pending Reason Summary' },
     { key: 'warranty',       label: 'Warranty Type Breakdown' },
     { key: 'ageBrand',       label: 'Age Wise Pending - Brand Wise' },
+    { key: 'ageSType',       label: 'Pending Jobs - By SVC Type' },
     { key: 'ageBranch',      label: 'Age Wise Pending - Branch Wise' },
     { key: 'ageTech',        label: 'Age Wise Pending - Technician Wise' },
     { key: 'graph',          label: 'Graph: Daily Registration vs Closing' },
@@ -430,6 +431,8 @@ function buildClosureData(headers, rows) {
     const brandIdx = getColIndex(headers, ['BRAND_NAME', 'BRAND', 'BRANCH NAME'], 1);
     const branchIdx = getColIndex(headers, ['BRANCH_NAME', 'BRANCH', 'BRANCH NAME'], 2);
     const techIdx = getColIndex(headers, ['TECHNICIAN_JOB_COMPLETED', 'TECHNICIAN_COMPLETED', 'TECHNICIAN_NAME', 'TECHNICIAN'], -1);
+    // Technicians are counted by their code (several technicians can share the same name)
+    const techCodeIdx = getColIndex(headers, ['TECH_CODE_JOB_COMPLETED', 'TECH_CODE_COMPLETED', 'TECH_CODE'], -1);
 
     closureData = [];
     rows.forEach(row => {
@@ -442,7 +445,9 @@ function buildClosureData(headers, rows) {
             const formattedDate = `${year}-${month}-${day}`;
             const brand = getRowVal(row, brandIdx) || 'Unknown';
             const branch = getRowVal(row, branchIdx) || 'Unknown';
-            closureData.push({ date: formattedDate, brand: brand, branch: branch, tech: getRowVal(row, techIdx) || 'Unknown' });
+            const techName = getRowVal(row, techIdx) || 'Unknown';
+            const techCode = getRowVal(row, techCodeIdx);
+            closureData.push({ date: formattedDate, brand: brand, branch: branch, tech: techName, techKey: techCode || techName });
         }
     });
 
@@ -470,13 +475,23 @@ function fmtAvg(v) {
  * (row total / number of dates shown). Rows are sorted by Average, high to low.
  * rowKey: which field of each record is the row (branch / brand / tech).
  */
-function renderMatrixTable(dataset, tableContainerId, rowLabel = 'Branch', rowKey = 'branch', truncateNames = false) {
+function renderMatrixTable(dataset, tableContainerId, rowLabel = 'Branch', rowKey = 'branch', truncateNames = false, labelKey = null) {
     const tableElem = document.getElementById(tableContainerId);
     if (!tableElem) return;
 
     // Daily tables always show the complete dataset. The graph Brand filter
     // applies only to the graph, not to these tables.
     const rows = Array.from(new Set(dataset.map(i => i[rowKey] || 'Unknown')));
+
+    // Optional: rows are counted by rowKey (e.g. tech code) but shown with labelKey (e.g. tech name).
+    const labels = {};
+    rows.forEach(r => { labels[r] = r; });
+    if (labelKey) {
+        dataset.forEach(i => {
+            const k = i[rowKey] || 'Unknown';
+            if (i[labelKey] && labels[k] === k) labels[k] = i[labelKey];
+        });
+    }
     const dates = Array.from(new Set(dataset.map(i => i.date))).sort();
 
     const matrix = {};
@@ -497,7 +512,7 @@ function renderMatrixTable(dataset, tableContainerId, rowLabel = 'Branch', rowKe
     rows.forEach(r => { avgs[r] = avgOf(r); });
 
     // Sort rows by Average, high to low.
-    rows.sort((a, b) => (avgs[b] - avgs[a]) || a.localeCompare(b));
+    rows.sort((a, b) => (avgs[b] - avgs[a]) || labels[a].localeCompare(labels[b]) || a.localeCompare(b));
 
     let theadHtml = `<thead><tr><th>${rowLabel}</th>`;
     dates.forEach(d => {
@@ -512,9 +527,10 @@ function renderMatrixTable(dataset, tableContainerId, rowLabel = 'Branch', rowKe
 
     let tbodyHtml = '<tbody>';
     rows.forEach(row => {
-        const safe = escapeEmailHtml(row);
+        const safe = escapeEmailHtml(labels[row]);
+        const tip = (labelKey && labels[row] !== row) ? `${safe} (${escapeEmailHtml(row)})` : safe;
         const cellCls = truncateNames ? 'bold name-cell' : 'bold';
-        tbodyHtml += `<tr><td class="${cellCls}" title="${safe}">${safe}</td>`;
+        tbodyHtml += `<tr><td class="${cellCls}" title="${tip}">${safe}</td>`;
         dates.forEach(d => {
             const val = matrix[row][d];
             tbodyHtml += `<td class="text-center">${val > 0 ? val : ''}</td>`;
@@ -536,7 +552,7 @@ function renderMatrixTable(dataset, tableContainerId, rowLabel = 'Branch', rowKe
     // Name + Average columns get fixed widths; the date columns share the rest, so the table's total width never changes.
     let colGroup = '';
     if (truncateNames && rows.length) {
-        const longest = Math.max(...rows.map(r => String(r).length));
+        const longest = Math.max(...rows.map(r => String(labels[r]).length));
         const nameCh = Math.ceil(longest * (TECH_NAME_SHOW_PERCENT / 100) * 1.1) + 1;
         tableElem.style.minWidth = `${nameCh + 6 + dates.length * 4.5}ch`;   // on narrow screens the table scrolls instead of squeezing
         colGroup = `<colgroup><col style="width:${nameCh}ch">${dates.map(() => '<col>').join('')}<col style="width:6ch"></colgroup>`;
@@ -574,7 +590,7 @@ function renderAdminDailyAnalytics() {
 
     renderBrandMatrixTable(branchData.registration, 'table-daily-registration-brand');
     renderBrandMatrixTable(branchData.closure, 'table-daily-closing-brand');
-    renderMatrixTable(branchData.closure, 'table-daily-closing-tech', 'Technician', 'tech', true);
+    renderMatrixTable(branchData.closure, 'table-daily-closing-tech', 'Technician', 'techKey', true, 'tech');
 
     renderGraphFilterButtons(branchData);
     renderDailyAnalyticsChart(branchData);
@@ -1033,6 +1049,7 @@ function processDashboardData() {
     renderPendingReasonTable();
     renderWarrantyTypeTable();
     renderAgeWiseMatrix('brand', 'table-age-brand');
+    renderAgeWiseMatrix('serviceType', 'table-age-stype');
     renderAgeWiseMatrix('branch', 'table-age-branch');
     renderAgeWiseMatrix('technician', 'table-age-tech');
     
@@ -1565,6 +1582,10 @@ function filterDetailedTable(filterType, label, param = null, shouldScroll = tru
         records = filteredData.filter(r => r.warrantyType === param);
     } else if (filterType === 'BRAND_AGE') {
         records = filteredData.filter(r => r.brand === param.key && r.ageCategory === param.age);
+    } else if (filterType === 'SERVICETYPE_AGE') {
+        records = filteredData.filter(r => (r.serviceType || 'Unassigned') === param.key && r.ageCategory === param.age);
+    } else if (filterType === 'SERVICETYPE_TOTAL') {
+        records = filteredData.filter(r => (r.serviceType || 'Unassigned') === param);
     } else if (filterType === 'BRANCH_AGE') {
         records = filteredData.filter(r => r.branch === param.key && r.ageCategory === param.age);
     } else if (filterType === 'TECHNICIAN_AGE') {
@@ -2716,6 +2737,7 @@ const QUICK_NAV_ITEMS = [
     { perm: 'pendReason',      label: 'Pend Reason',    sel: '[data-perm="pendReason"]' },
     { perm: 'warranty',        label: 'Warranty',       sel: '[data-perm="warranty"]' },
     { perm: 'ageBrand',        label: 'Age-Brand',      sel: '[data-perm="ageBrand"]' },
+    { perm: 'ageSType',        label: 'SVC Type',       sel: '[data-perm="ageSType"]' },
     { perm: 'ageBranch',       label: 'Age-Branch',     sel: '[data-perm="ageBranch"]' },
     { perm: 'ageTech',         label: 'Age-Tech',       sel: '[data-perm="ageTech"]' },
     { perm: 'graph',           label: 'Reg vs Close',   sel: '[data-perm="graph"]' },
