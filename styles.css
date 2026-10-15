@@ -1897,5 +1897,22 @@ th.avg-col { color: #fff; background: var(--slate-800); }
 }
 
 
+/* Pending Reason | Warranty | Age-Brand | Age-S-Type: all four in one line.
+   Narrow (3-column) tables get less width, the two age tables share the rest. */
+.sub-dashboards-four-col { grid-template-columns: minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 1.6fr) minmax(0, 1.6fr); }
+.sub-dashboards-four-col .summary-card { min-width: 0; padding: 0.75rem; }
+.sub-dashboards-four-col .card-header h3 { font-size: 0.85rem; }
+.sub-dashboards-four-col th, .sub-dashboards-four-col td { padding-left: 0.2rem; padding-right: 0.2rem; }
+@media screen and (max-width: 1200px) and (min-width: 901px) {
+    .sub-dashboards-four-col .summary-card:nth-child(3) { grid-column: auto; }
+}
+@media screen and (max-width: 900px) {
+    .sub-dashboards-four-col { grid-template-columns: 1fr 1fr; }
+    .sub-dashboards-four-col .summary-card:nth-child(3) { grid-column: auto; }
+}
+@media screen and (max-width: 768px) {
+    .sub-dashboards-four-col { grid-template-columns: 1fr; }
+}
+
 /* Detailed Job Overview: Area column is capped so the table keeps its total width (full name on hover) */
 #table-detailed td.area-col { max-width: 90px; overflow: hidden; text-overflow: ellipsis; }
