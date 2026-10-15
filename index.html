@@ -190,7 +190,7 @@
             </div>
 
             <!-- 3-COLUMN BREAKDOWNS -->
-            <div class="sub-dashboards-three-col perm-group">
+            <div class="sub-dashboards-three-col sub-dashboards-four-col perm-group">
                 <div class="summary-card" data-perm="pendReason">
                     <div class="card-header flex-between">
                         <h3>Pending Reason Summary</h3>
@@ -239,6 +239,31 @@
                             <thead>
                                 <tr>
                                     <th>Brand</th>
+                                    <th class="text-center">0~02</th>
+                                    <th class="text-center">03~04</th>
+                                    <th class="text-center">05~06</th>
+                                    <th class="text-center">07~09</th>
+                                    <th class="text-center">10~14</th>
+                                    <th class="text-center">15~25</th>
+                                    <th class="text-center">>25</th>
+                                    <th class="text-center">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="summary-card" data-perm="ageSType">
+                    <div class="card-header flex-between">
+                        <h3 title="Pending Jobs - By SVC Type">Pending Jobs - By SVC Type</h3>
+                        <button class="btn-capture-table" onclick="captureTableToClipboard('table-age-stype')" title="Capture Image">📷</button>
+                    </div>
+                    <div class="table-wrapper">
+                        <table id="table-age-stype">
+                            <thead>
+                                <tr>
+                                    <th>S-Type</th>
                                     <th class="text-center">0~02</th>
                                     <th class="text-center">03~04</th>
                                     <th class="text-center">05~06</th>
