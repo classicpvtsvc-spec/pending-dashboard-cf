@@ -103,6 +103,22 @@
             </div>
 
             <div class="nav-controls">
+                <!-- Budget uploads (Repair Revenue / Counter Sale): left of Branch selection. Shown for Admin only (mirrors #admin-upload-controls, see target.js) -->
+                <div id="admin-budget-upload-controls" style="display: none; align-items: center; gap: 0.5rem;">
+                    <div class="upload-btn-wrapper">
+                        <button class="btn-upload" id="btn-upload-repair" onclick="document.getElementById('repair-file-input').click()">
+                            ⇫ Repair Revenue
+                        </button>
+                        <input type="file" id="repair-file-input" accept=".xlsx, .xls, .csv, .txt, .tsv" style="display: none;">
+                    </div>
+                    <div class="upload-btn-wrapper">
+                        <button class="btn-upload" id="btn-upload-counter" onclick="document.getElementById('counter-file-input').click()">
+                            ⇫ Counter Sale
+                        </button>
+                        <input type="file" id="counter-file-input" accept=".xlsx, .xls, .csv, .txt, .tsv" style="display: none;">
+                    </div>
+                </div>
+
                 <div class="filter-group">
                     <label for="branch-filter">Branch:</label>
                     <select id="branch-filter" class="select-input">
@@ -469,6 +485,71 @@
                     </table>
                 </div>
             </div>
+
+            <!-- MONTHLY BRANCH TARGET DASHBOARD (OW revenue + counter sale) -->
+            <div id="month-target-section" class="mt-section" data-perm="monthTarget">
+                <div class="page-title-banner mt-banner">
+                    <h2>Monthly Branch Target - <span id="mt-month-label">-</span></h2>
+                    <p>OW Repair Revenue &amp; Spare Parts Counter Sale: target vs achievement, day by day</p>
+                    <div id="mt-info" class="last-updated-info"></div>
+                </div>
+
+                <div id="mt-kpis" class="mt-kpis"></div>
+                <div class="mt-legend">
+                    Daily target = monthly target &times; (day weight &divide; total working days). Friday off, Saturday half day.
+                    Minimum 90% is mandatory: <span class="mt-pill low">Below 90%</span> <span class="mt-pill c">Grade C 90%</span> <span class="mt-pill b">Grade B 91-95%</span> <span class="mt-pill a">Grade A 96%+</span>
+                </div>
+
+                <div class="summary-card">
+                    <div class="card-header flex-between">
+                        <h3>Branch Wise Target vs Achievement</h3>
+                        <button class="btn-capture-table" onclick="captureTableToClipboard('table-mt-branch')" title="Capture Image">📷</button>
+                    </div>
+                    <div class="table-wrapper" style="max-height: none;">
+                        <table id="table-mt-branch" class="mt-table"></table>
+                    </div>
+                    <div id="mt-notarget" class="mt-note"></div>
+                </div>
+
+                <div class="mt-toolbar">
+                    <h3>Daily tracking</h3>
+                    <div class="mt-controls">
+                        <span class="mt-month-wrap"><label for="mt-month">Month:</label> <select id="mt-month" class="select-input"></select></span>
+                        <div class="mt-seg" id="mt-metric-seg">
+                            <button type="button" data-m="total" class="active">Total</button>
+                            <button type="button" data-m="ow">OW Revenue</button>
+                            <button type="button" data-m="counter">Counter Sale</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-two">
+                    <div class="summary-card">
+                        <div class="card-header"><h3 id="mt-chart1-title">Daily Target vs Achieved</h3></div>
+                        <div class="mt-chart-box"><canvas id="mt-chart-daily"></canvas></div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="card-header"><h3 id="mt-chart2-title">Accumulated Achieved vs Target</h3></div>
+                        <div class="mt-chart-box"><canvas id="mt-chart-cum"></canvas></div>
+                    </div>
+                </div>
+
+                <div class="mt-two mt-two-wide">
+                    <div class="summary-card">
+                        <div class="card-header flex-between">
+                            <h3>Daily Target &amp; Achievement</h3>
+                            <button class="btn-capture-table" onclick="captureTableToClipboard('table-mt-daily')" title="Capture Image">📷</button>
+                        </div>
+                        <div class="table-wrapper">
+                            <table id="table-mt-daily" class="mt-table"></table>
+                        </div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="card-header"><h3 id="mt-chart3-title">Branch Achievement %</h3></div>
+                        <div class="mt-chart-box" id="mt-chart-branch-box"><canvas id="mt-chart-branch"></canvas></div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -702,5 +783,6 @@
     </button>
 
     <script src="app.js"></script>
+    <script src="target.js"></script>
 </body>
 </html>
