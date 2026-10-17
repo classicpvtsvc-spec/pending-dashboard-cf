@@ -48,6 +48,7 @@ const PERM_DEFS = [
     { key: 'dailyCloseBrand',label: 'Daily Job Closing (Brand Wise)' },
     { key: 'dailyCloseTech', label: 'Daily Closing - Tech Wise' },
     { key: 'detailed',       label: 'Detailed Job Overview table' },
+    { key: 'monthTarget',    label: 'Monthly Branch Target dashboard' },
     { key: 'export',         label: 'Export Excel button' }
 ];
 const PERM_KEYS = PERM_DEFS.map(p => p.key);
@@ -288,6 +289,7 @@ function initEventListeners() {
     document.getElementById('excel-file-input').addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (file) {
+            contactDataIsLocal = true;   // full file (with phone / address) is kept in this browser only
             processUploadedFile(file, 'pending');
             handleUploadPersistence(file, 'pending');
             highlightUploadButton('btn-upload-pending', 'Pending Jobs Uploaded');
@@ -339,6 +341,10 @@ function highlightUploadButton(buttonId, labelText) {
 }
 
 function processUploadedFile(file, type = 'pending') {
+    if ((type === 'repair' || type === 'counter') && typeof loadRevenueFile === 'function') {
+        loadRevenueFile(file, type, false);   // Monthly Branch Target data (see target.js)
+        return;
+    }
     const fileName = file.name.toLowerCase();
     if (fileName.endsWith('.txt') || fileName.endsWith('.tsv')) {
         const reader = new FileReader();
@@ -1059,6 +1065,7 @@ function processDashboardData() {
 
     filterDetailedTable('ALL', 'Total Pending Jobs', null, false);
     syncAgeTableHeights();
+    if (typeof renderMonthlyTarget === 'function') renderMonthlyTarget();   // follows the Branch filter
 }
 
 function hasPendingPartStatus(record) {
@@ -1949,8 +1956,9 @@ function openJobCardModal(jobNo) {
     document.getElementById('jc-brand').textContent = rec.brand || '-';
     document.getElementById('jc-rcpt-no').textContent = rec.jobNo || '-';
     document.getElementById('jc-user-name').textContent = rec.userName || '-';
-    document.getElementById('jc-home-tel').textContent = rec.homeTel || '-';
-    document.getElementById('jc-mobile-no').textContent = rec.mobileNo || '-';
+    const noContactNote = contactDataIsLocal ? '-' : 'Not stored online - upload Pending file from your PC';
+    document.getElementById('jc-home-tel').textContent = rec.homeTel || noContactNote;
+    document.getElementById('jc-mobile-no').textContent = rec.mobileNo || noContactNote;
     document.getElementById('jc-model-cd').textContent = rec.model || '-';
     document.getElementById('jc-area').textContent = rec.area || '-';
     document.getElementById('jc-warranty-type').textContent = rec.warrantyRaw || rec.warrantyType || '-';
@@ -2590,7 +2598,7 @@ function buildOutlookDraftEml(images) {
    ========================================================================== */
 const CLOUD_API = '/api/data';
 const CLOUD_KEY_STORAGE = 'dashboard_admin_upload_key';
-const CLOUD_LABELS = { pending: 'Pending Jobs', registration: 'Registration', closure: 'Closure', users: 'User list' };
+const CLOUD_LABELS = { pending: 'Pending Jobs', registration: 'Registration', closure: 'Closure', users: 'User list', repair: 'Repair Revenue', counter: 'Counter Sale' };
 const cloudInfo = { pending: null, registration: null, closure: null };
 let cloudTempNotice = '';   // shown when a non-admin uploads a temporary file
 let cloudStatusNotice = ''; // "Saving..." / error messages
@@ -2620,6 +2628,7 @@ function renderLastUpdated() {
     if (cloudTempNotice) html += `<span class="lu-temp">${escapeEmailHtml(cloudTempNotice)}</span>`;
     if (cloudStatusNotice) html += `<span class="${cloudStatusNotice.startsWith('⚠') ? 'lu-error' : 'lu-item'}">${escapeEmailHtml(cloudStatusNotice)}</span>`;
     el.innerHTML = html;
+    if (typeof renderMonthlyTarget === 'function') renderMonthlyTarget();   // keeps the Monthly Target info line current
 }
 
 /** Load the last Admin-saved data for everyone; fall back to the old local default files. */
@@ -2635,7 +2644,7 @@ async function loadCloudData() {
         if (!res.ok) return false;
         const info = await res.json();
         const isAdmin = currentUser && currentUser.role === 'Admin';
-        const types = ['pending'].concat(canViewDaily() ? ['registration', 'closure'] : []);
+        const types = ['pending'].concat(canViewDaily() ? ['registration', 'closure'] : [], hasPerm('monthTarget') ? ['repair', 'counter'] : []);
         let pendingLoaded = false;
 
         for (const t of types) {
@@ -2674,7 +2683,92 @@ function getAdminUploadKey(forcePrompt) {
     return key;
 }
 
+/* ==========================================================================
+   CUSTOMER PRIVACY: contact numbers and address are NEVER sent to the online server.
+   Columns HOME_TEL, MOBILE_NO and ADDRESS1 are blanked in the copy that is saved online
+   (headers and column positions stay the same, so nothing else changes). The full file
+   stays only in the uploader's browser memory until the page is refreshed, so Print and
+   the Job Card show the numbers only for a user who uploaded the file from their own PC.
+   ========================================================================== */
+const PRIVATE_COLUMN_RULES = [
+    { names: ['HOME_TEL', 'TEL', 'PHONE'],   fallback: 2 },   // same names / positions the dashboard reads
+    { names: ['MOBILE_NO', 'MOB', 'MOBILE'], fallback: 3 }
+];
+const PRIVATE_ADDRESS_RE = /^ADDRESS(?:[ _]?\d+)?$/;          // ADDRESS1, ADDRESS_2 ...
+let contactDataIsLocal = false;   // true once the user uploaded the Pending file from this PC
+
+/** Column positions (0-based) that hold customer contact data. */
+function privateColumnIndexes(headers, type) {
+    const set = new Set();
+    PRIVATE_COLUMN_RULES.forEach(rule => {
+        let found = false;
+        rule.names.forEach(n => {
+            headers.forEach((h, i) => { if (h === n) { set.add(i); found = true; } });
+        });
+        if (!found && type === 'pending') set.add(rule.fallback);   // mirrors the dashboard's own fallback
+    });
+    headers.forEach((h, i) => { if (PRIVATE_ADDRESS_RE.test(h)) set.add(i); });
+    return set;
+}
+
+function stripPrivateFromText(text, type) {
+    const nl = text.indexOf('\r\n') >= 0 ? '\r\n' : '\n';
+    const lines = text.split(/\r?\n/);
+    if (lines.length < 2) return text;
+    const headers = lines[0].split('\t').map(h => h.trim().toUpperCase());
+    const idxs = privateColumnIndexes(headers, type);
+    if (!idxs.size) return text;
+    for (let i = 1; i < lines.length; i++) {
+        if (!lines[i]) continue;
+        const cells = lines[i].split('\t');
+        idxs.forEach(ix => { if (ix < cells.length) cells[ix] = ''; });
+        lines[i] = cells.join('\t');
+    }
+    return lines.join(nl);
+}
+
+function stripPrivateFromWorkbook(buffer, type) {
+    const wb = XLSX.read(buffer, { type: 'array' });
+    const sheetName = wb.SheetNames[0];
+    const sheet = wb.Sheets[sheetName];
+    if (!sheet || !sheet['!ref']) throw new Error('empty sheet');
+    const range = XLSX.utils.decode_range(sheet['!ref']);
+    const headers = [];
+    for (let c = range.s.c; c <= range.e.c; c++) {
+        const cell = sheet[XLSX.utils.encode_cell({ r: range.s.r, c: c })];
+        headers.push(String(cell && cell.v !== undefined && cell.v !== null ? cell.v : '').trim().toUpperCase());
+    }
+    privateColumnIndexes(headers, type).forEach(ix => {
+        const c = range.s.c + ix;
+        for (let r = range.s.r + 1; r <= range.e.r; r++) delete sheet[XLSX.utils.encode_cell({ r: r, c: c })];
+    });
+    const out = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(out, sheet, sheetName);   // only the first sheet is used by the dashboard
+    return XLSX.write(out, { type: 'array', bookType: 'xlsx' });
+}
+
+/** Returns the copy of the file that is safe to save online. Throws if it cannot be made safe. */
+async function stripPersonalData(file, type) {
+    if (!['pending', 'registration', 'closure'].includes(type)) return file;
+    if (/\.(txt|tsv)$/i.test(file.name)) {
+        const clean = stripPrivateFromText(await file.text(), type);
+        return new File([clean], file.name, { type: 'text/plain' });
+    }
+    const out = stripPrivateFromWorkbook(await file.arrayBuffer(), type);
+    return new File([out], file.name.replace(/\.[^.]+$/, '') + '.xlsx');
+}
+
 async function saveAdminUploadToCloud(file, type) {
+    // Remove customer contact data first. If that fails, nothing is sent online.
+    try {
+        file = await stripPersonalData(file, type);
+    } catch (err) {
+        console.error('Privacy clean-up failed:', err);
+        cloudStatusNotice = `⚠ Not saved online: customer contact data could not be removed from the file (${err.message}). Visible in this session only.`;
+        renderLastUpdated();
+        return;
+    }
+
     let key = getAdminUploadKey(false);
     if (!key) {
         cloudStatusNotice = '⚠ Not saved online (no Admin Upload Key entered). Visible in this session only.';
@@ -2713,7 +2807,8 @@ async function saveAdminUploadToCloud(file, type) {
             const saved = await res.json();
             cloudInfo[type] = saved.meta;
             cloudTempNotice = '';
-            cloudStatusNotice = `✓ ${CLOUD_LABELS[type]} data saved online`;
+            cloudStatusNotice = `✓ ${CLOUD_LABELS[type]} data saved online` +
+                (['pending', 'registration', 'closure'].includes(type) ? ' (customer phone / address NOT saved online - kept in this browser only until refresh)' : '');
             renderLastUpdated();
             setTimeout(() => { cloudStatusNotice = ''; renderLastUpdated(); }, 5000);
             return;
@@ -2746,7 +2841,8 @@ const QUICK_NAV_ITEMS = [
     { perm: 'dailyRegBrand',   label: 'Reg-Brand',      sel: '[data-perm="dailyRegBrand"]' },
     { perm: 'dailyCloseBrand', label: 'Close-Brand',    sel: '[data-perm="dailyCloseBrand"]' },
     { perm: 'dailyCloseTech',  label: 'Close-Tech',     sel: '[data-perm="dailyCloseTech"]' },
-    { perm: 'detailed',        label: 'Detailed Jobs',  sel: '#detailed-section' }
+    { perm: 'detailed',        label: 'Detailed Jobs',  sel: '#detailed-section' },
+    { perm: 'monthTarget',     label: 'Monthly Target', sel: '#month-target-section' }
 ];
 
 function buildQuickNav() {
