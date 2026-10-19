@@ -162,6 +162,8 @@ function mtBuildRows(type, table) {
     const clean = v => String(v === undefined || v === null ? '' : v).replace(/[\t\r\n]+/g, ' ').trim();
 
     const rows = [];
+    const legend = {};      // saved-file shortcut: id -> Warranty Type name (see mtCompactFile)
+    table.rows.forEach(r => { if (r && String(r[0]).trim() === '#T') legend[String(r[1]).trim()] = clean(r[2]); });
     table.rows.forEach(r => {
         if (!r || !r.length) return;
         const date = mtDateKey(r[iD]);
@@ -175,7 +177,7 @@ function mtBuildRows(type, table) {
             code: code,
             w: type === 'repair' ? String(r[iW] === undefined || r[iW] === null ? '' : r[iW]).trim().toUpperCase() : '',
             amt: amt,
-            wt: type === 'repair' ? (iWT >= 0 ? clean(r[iWT]) : null) : null,      // Warranty Type (repair)
+            wt: type === 'repair' ? (iWT >= 0 ? (legend[clean(r[iWT])] !== undefined ? legend[clean(r[iWT])] : clean(r[iWT])) : null) : null,      // Warranty Type (repair)
             b: type === 'counter' ? (iBR >= 0 ? mtCode(clean(r[iBR])) : null) : null  // Brand code (counter)
         });
     });
@@ -185,10 +187,17 @@ function mtBuildRows(type, table) {
 /** Only date, branch code, warranty code/type (repair), brand code (counter) and amount are kept online - nothing else from the original file. */
 function mtCompactFile(type, rows, originalName) {
     const head = type === 'repair' ? 'INVOICE_DT\tBRANCH_CD\tWARRANTY_CODE\tINVOICE_AMT\tWARRANTY_TYPE' : 'INVOICE_DT\tBRANCH_CD\tNET_PRICE\tBRAND_CD';
+    const ids = {}, legendLines = [];
+    const typeId = name => {
+        if (!name) return '';
+        if (ids[name] === undefined) { ids[name] = String(legendLines.length + 1); legendLines.push(`#T\t${ids[name]}\t${name}`); }
+        return ids[name];
+    };
     const lines = rows.map(r => {
         const d = r.date.replace(/-/g, '');
-        return type === 'repair' ? `${d}\t${r.code}\t${r.w}\t${r.amt}\t${r.wt || ''}` : `${d}\t${r.code}\t${r.amt}\t${r.b || ''}`;
+        return type === 'repair' ? `${d}\t${r.code}\t${r.w}\t${r.amt}\t${typeId(r.wt)}` : `${d}\t${r.code}\t${r.amt}\t${r.b || ''}`;
     });
+    if (legendLines.length) lines.unshift.apply(lines, legendLines);
     const base = String(originalName || type).replace(/\.[^.]+$/, '');
     return new File([head + '\n' + lines.join('\n')], base + '.txt', { type: 'text/plain' });
 }
