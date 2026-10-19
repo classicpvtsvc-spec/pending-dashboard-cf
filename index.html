@@ -549,6 +549,29 @@
                         <div class="mt-chart-box" id="mt-chart-branch-box"><canvas id="mt-chart-branch"></canvas></div>
                     </div>
                 </div>
+
+                <div class="mt-two">
+                    <div class="summary-card">
+                        <div class="card-header flex-between">
+                            <h3>Repair Revenue Breakdown - Warranty Type Wise (OW)</h3>
+                            <button class="btn-capture-table" onclick="captureTableToClipboard('table-mt-wtype')" title="Capture Image">📷</button>
+                        </div>
+                        <div class="table-wrapper">
+                            <table id="table-mt-wtype" class="mt-table"></table>
+                        </div>
+                        <div id="mt-wtype-note" class="mt-break-note"></div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="card-header flex-between">
+                            <h3>Counter Sale - Brand Wise Breakdown</h3>
+                            <button class="btn-capture-table" onclick="captureTableToClipboard('table-mt-brand')" title="Capture Image">📷</button>
+                        </div>
+                        <div class="table-wrapper">
+                            <table id="table-mt-brand" class="mt-table"></table>
+                        </div>
+                        <div id="mt-brand-note" class="mt-break-note"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -782,6 +805,18 @@
         <img src="top.png" alt="Go to top">
     </button>
 
+    <!-- Repair Revenue / Counter Sale upload buttons sit left of the Branch filter; they follow the Admin-only
+         visibility that app.js sets on #admin-upload-controls (no change to app.js needed). -->
+    <script>
+    (function () {
+        var src = document.getElementById('admin-upload-controls');
+        var dst = document.getElementById('admin-budget-upload-controls');
+        if (!src || !dst) return;
+        function sync() { dst.style.display = (src.style.display === '' || src.style.display === 'none') ? 'none' : 'flex'; }
+        sync();
+        new MutationObserver(sync).observe(src, { attributes: true, attributeFilter: ['style'] });
+    })();
+    </script>
     <script src="app.js"></script>
     <script src="target.js"></script>
 </body>
