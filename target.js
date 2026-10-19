@@ -41,6 +41,12 @@ const BRANCH_CODE_MAP = {
     '9741': 'Hassa',   '9743': 'Al Kharj', '9745': 'Khobar', '9742': 'Khobar'
 };
 
+const BRAND_NAME_MAP = {      // BRAND_CD (number) -> Brand name, for the Counter Sale brand breakdown
+    1: 'LG', 2: 'LAKES', 3: 'TANGO', 17: 'Philips', 18: 'Others', 19: 'GALANZ', 20: 'TANNUR', 21: 'MAGIC',
+    22: 'AQUARIA', 23: 'SMEG', 24: 'COWAY', 25: 'TOOLS', 26: 'OCEAN', 27: 'CENTURY', 28: 'AUX', 29: 'EDDY',
+    30: 'TCL', 31: 'RHEEM', 32: 'HISENSE', 33: 'Samsung', 34: 'Xiaomi'
+};
+
 const WARRANTY_CATEGORY_MAP = {   // WARRANTY_CODE (upper case) -> OW / W
     'AW': 'OW', 'V': 'OW', 'K': 'W', 'EW': 'W', 'HW': 'OW', 'I': 'W', 'O': 'OW', 'Q': 'W',
     'R': 'W', 'RW': 'OW', 'SE': 'OW', 'SW': 'W', 'A': 'W', 'XW': 'OW', 'CP': 'W', 'X': 'W'
@@ -151,6 +157,9 @@ function mtBuildRows(type, table) {
     const missing = need.filter(n => H.indexOf(n) < 0);
     if (missing.length) throw new Error('column(s) not found: ' + missing.join(', '));
     const iD = H.indexOf('INVOICE_DT'), iB = H.indexOf('BRANCH_CD'), iW = H.indexOf('WARRANTY_CODE'), iA = H.indexOf(amtName);
+    // optional columns for the breakdown tables (older saved files may not have them)
+    const iWT = H.indexOf('WARRANTY_TYPE'), iBR = H.indexOf('BRAND_CD');
+    const clean = v => String(v === undefined || v === null ? '' : v).replace(/[\t\r\n]+/g, ' ').trim();
 
     const rows = [];
     table.rows.forEach(r => {
@@ -165,18 +174,20 @@ function mtBuildRows(type, table) {
             date: date,
             code: code,
             w: type === 'repair' ? String(r[iW] === undefined || r[iW] === null ? '' : r[iW]).trim().toUpperCase() : '',
-            amt: amt
+            amt: amt,
+            wt: type === 'repair' ? (iWT >= 0 ? clean(r[iWT]) : null) : null,      // Warranty Type (repair)
+            b: type === 'counter' ? (iBR >= 0 ? mtCode(clean(r[iBR])) : null) : null  // Brand code (counter)
         });
     });
     return rows;
 }
 
-/** Only date, branch code, warranty code and amount are kept online - nothing else from the original file. */
+/** Only date, branch code, warranty code/type (repair), brand code (counter) and amount are kept online - nothing else from the original file. */
 function mtCompactFile(type, rows, originalName) {
-    const head = type === 'repair' ? 'INVOICE_DT\tBRANCH_CD\tWARRANTY_CODE\tINVOICE_AMT' : 'INVOICE_DT\tBRANCH_CD\tNET_PRICE';
+    const head = type === 'repair' ? 'INVOICE_DT\tBRANCH_CD\tWARRANTY_CODE\tINVOICE_AMT\tWARRANTY_TYPE' : 'INVOICE_DT\tBRANCH_CD\tNET_PRICE\tBRAND_CD';
     const lines = rows.map(r => {
         const d = r.date.replace(/-/g, '');
-        return type === 'repair' ? `${d}\t${r.code}\t${r.w}\t${r.amt}` : `${d}\t${r.code}\t${r.amt}`;
+        return type === 'repair' ? `${d}\t${r.code}\t${r.w}\t${r.amt}\t${r.wt || ''}` : `${d}\t${r.code}\t${r.amt}\t${r.b || ''}`;
     });
     const base = String(originalName || type).replace(/\.[^.]+$/, '');
     return new File([head + '\n' + lines.join('\n')], base + '.txt', { type: 'text/plain' });
@@ -398,6 +409,66 @@ function mtRenderInfo(M) {
     el.innerHTML = html;
 }
 
+/* ---- Breakdown tables: Repair Revenue by Warranty Type (OW only) and Counter Sale by Brand ---- */
+function mtBreakdownTable(tblId, noteId, firstHead, rows, emptyMsg, note) {
+    const tbl = document.getElementById(tblId), nt = document.getElementById(noteId);
+    if (!tbl) return;
+    if (nt) nt.innerHTML = note || '';
+    if (!rows) { tbl.innerHTML = `<tbody><tr><td class="mt-break-empty">${emptyMsg}</td></tr></tbody>`; return; }
+    const total = rows.reduce((s, r) => s + r.v, 0);
+    const pct = v => total ? ((v / total) * 100).toFixed(1) + '%' : '-';
+    let body = '<tbody>';
+    rows.forEach(r => {
+        body += `<tr><td class="bold">${escapeEmailHtml(r.k)}</td><td class="text-right">${mtFmt(r.v)}</td><td class="text-center">${pct(r.v)}</td></tr>`;
+    });
+    body += `<tr class="daily-total-row"><td class="bold">Total</td><td class="text-right bold">${mtFmt(total)}</td><td class="text-center bold">${total ? '100.0%' : '-'}</td></tr></tbody>`;
+    tbl.innerHTML = `<thead><tr><th>${firstHead}</th><th class="text-right">Revenue</th><th class="text-center">%</th></tr></thead>` + body;
+}
+
+function mtRenderBreakdowns(M) {
+    const names = new Set(M.names), month = M.month;
+
+    // 1) Repair Revenue - Warranty Type wise, OW category only (same rows/branches as the OW Revenue total)
+    let wtRows = null, wtMsg = '';
+    if (!repairRows.length) wtMsg = 'Repair Revenue file not uploaded yet.';
+    else if (repairRows.every(r => r.wt === null)) wtMsg = 'WARRANTY_TYPE is not in the saved Repair Revenue file. Please upload the Repair Revenue file again.';
+    else {
+        const g = {};
+        repairRows.forEach(r => {
+            if (!r.date.startsWith(month) || WARRANTY_CATEGORY_MAP[r.w] !== 'OW') return;
+            const n = BRANCH_CODE_MAP[r.code];
+            if (!n || !names.has(n)) return;
+            const k = r.wt || 'Not specified';
+            g[k] = (g[k] || 0) + r.amt;
+        });
+        wtRows = Object.keys(g).map(k => ({ k: k, v: g[k] })).sort((a, b) => b.v - a.v);
+        if (!wtRows.length) { wtRows = null; wtMsg = 'No OW Repair Revenue for this month.'; }
+    }
+    mtBreakdownTable('table-mt-wtype', 'mt-wtype-note', 'Warranty Type', wtRows, wtMsg, '');
+
+    // 2) Counter Sale - Brand wise (same rows/branches as the Counter Sale total, negative lines included)
+    let brRows = null, brMsg = '', brNote = '';
+    if (!counterRows.length) brMsg = 'Counter Sale file not uploaded yet.';
+    else if (counterRows.every(r => r.b === null)) brMsg = 'BRAND_CD is not in the saved Counter Sale file. Please upload the Counter Sale file again.';
+    else {
+        const g = {}; let credit = 0;
+        counterRows.forEach(r => {
+            const older = r.amt < 0 && r.date < month + '-01';      // credit lines of older invoice dates: deducted from the total
+            if (!older && !r.date.startsWith(month)) return;
+            const n = BRANCH_CODE_MAP[r.code];
+            if (!n || !names.has(n)) return;
+            const num = parseInt(r.b, 10);
+            const k = (!isNaN(num) && BRAND_NAME_MAP[num]) ? BRAND_NAME_MAP[num] : (r.b ? 'Brand ' + r.b : 'Not specified');
+            g[k] = (g[k] || 0) + r.amt;
+            if (older) credit += r.amt;
+        });
+        brRows = Object.keys(g).map(k => ({ k: k, v: g[k] })).sort((a, b) => b.v - a.v);
+        if (!brRows.length) { brRows = null; brMsg = 'No Counter Sale for this month.'; }
+        if (credit) brNote = `Includes credit of <b class="mt-down">-${mtFmt(Math.abs(credit))}</b> (negative Net Price of older invoice dates).`;
+    }
+    mtBreakdownTable('table-mt-brand', 'mt-brand-note', 'Brand', brRows, brMsg, brNote);
+}
+
 function mtRenderBranchTable(M) {
     const tbl = document.getElementById('table-mt-branch');
     if (!tbl) return;
@@ -473,7 +544,7 @@ function mtRenderDailyTable(M) {
     });
     const cp = mtPct(S.A, S.T);
     body += `<tr class="daily-total-row"><td class="bold" colspan="3">Month</td><td class="text-right">${mtFmt(S.T)}</td><td class="text-right">${mtFmt(S.A)}</td><td></td><td class="text-center">${mtPctPill(cp)}</td><td class="text-right">${mtFmt(S.T)}</td><td class="text-right">${mtFmt(S.A)}</td><td class="text-center">${mtPctPill(cp)}</td><td class="text-right ${S.credit ? 'mt-down' : ''}" title="Counter Sale negative Net Price of older invoice dates - already deducted in the Month total">${S.credit ? '-' + mtFmt(Math.abs(S.credit)) : '-'}</td></tr></tbody>`;
-    tbl.innerHTML = `<thead><tr><th>Date</th><th>Day</th><th class="text-center">Day Type</th><th class="text-right">D-TARGT</th><th class="text-right">ACHVD</th><th class="text-right">Variance</th><th class="text-center">Ach %</th><th class="text-right">ACC.TARGT</th><th class="text-right">ACC.ACHVD</th><th class="text-center">Accum. %</th><th class="text-right">Credit</th></tr></thead>` + body;
+    tbl.innerHTML = `<thead><tr><th>Date</th><th>Day</th><th class="text-center">Day Type</th><th class="text-right">Daily Target</th><th class="text-right">Achieved</th><th class="text-right">Variance</th><th class="text-center">Ach %</th><th class="text-right">Accum. Target</th><th class="text-right">Accum. Achieved</th><th class="text-center">Accum. %</th><th class="text-right">Credit</th></tr></thead>` + body;
 }
 
 function mtDrawChart(id, config) {
@@ -584,6 +655,7 @@ function renderMonthlyTarget() {
     }
     mtRenderBranchTable(M);
     mtRenderDailyTable(M);
+    mtRenderBreakdowns(M);
     mtRenderCharts(M);
 }
 
@@ -607,15 +679,4 @@ function initMonthlyTarget() {
     });
 }
 
-/** The Repair Revenue / Counter Sale buttons sit left of the Branch filter, outside #admin-upload-controls.
-    They follow that container's visibility, so they stay Admin-only without touching app.js. */
-function mtSyncBudgetUploadVisibility() {
-    const src = document.getElementById('admin-upload-controls');
-    const dst = document.getElementById('admin-budget-upload-controls');
-    if (!src || !dst) return;
-    const apply = () => { dst.style.display = (src.style.display === 'none' || src.style.display === '') ? 'none' : 'flex'; };
-    apply();
-    new MutationObserver(apply).observe(src, { attributes: true, attributeFilter: ['style', 'class'] });
-}
 document.addEventListener('DOMContentLoaded', initMonthlyTarget);
-document.addEventListener('DOMContentLoaded', mtSyncBudgetUploadVisibility);

@@ -1975,3 +1975,11 @@ th.avg-col { color: #fff; background: var(--slate-800); }
 .mt-chart-box { position: relative; height: 300px; width: 100%; }
 @media screen and (max-width: 1000px) { .mt-two, .mt-two-wide { grid-template-columns: 1fr; } }
 @media screen and (max-width: 480px) { .mt-stats { grid-template-columns: 1fr; } }
+
+/* Daily Target & Achievement: compact spacing so the Credit column fits without sideways scrolling */
+#table-mt-daily th, #table-mt-daily td { padding: 0.18rem 0.25rem; font-size: 0.7rem; letter-spacing: 0; }
+#table-mt-daily th { letter-spacing: 0; white-space: nowrap; }
+
+/* Monthly Target - breakdown tables (Warranty Type / Brand) */
+.mt-break-note { font-size: 0.76rem; color: var(--text-muted); margin-top: 0.5rem; }
+.mt-break-empty { padding: 1.2rem 0.5rem; text-align: center; font-size: 0.82rem; color: var(--text-muted); }
