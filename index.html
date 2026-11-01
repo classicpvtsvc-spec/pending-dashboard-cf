@@ -148,11 +148,18 @@
                 </div>
 
                 <button class="btn-action" id="btn-export-excel" data-perm="export">Export Excel</button>
-                <button class="btn-action" id="btn-user-mgmt" style="display: none;">User Mgmt</button>
-<!-- Inside <div class="nav-controls"> or <div class="header-nav-buttons"> -->
-<button type="button" class="btn-action" id="btn-send-email" onclick="handleSendEmailClick()">
-    📧 Email
-</button>
+                <!-- ADMIN MENU: everything Admin-only lives here (shown for Admin only, see script at the bottom) -->
+                <div class="admin-menu" id="admin-menu" style="display: none;">
+                    <button type="button" class="btn-action admin-menu-btn" id="btn-admin-menu" title="Admin" aria-label="Admin menu" aria-haspopup="true" aria-expanded="false">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5l8-3z"/><circle cx="12" cy="10" r="2.6"/><path d="M7.6 17c.9-2 2.6-3 4.4-3s3.5 1 4.4 3"/></svg>
+                        <span class="admin-caret">&#9662;</span>
+                    </button>
+                    <div class="admin-dropdown" id="admin-dropdown" style="display: none;">
+                        <button type="button" class="admin-item" id="btn-user-mgmt">👥 User Management</button>
+                        <button type="button" class="admin-item" id="btn-send-email" onclick="handleSendEmailClick()">📧 Email</button>
+                        <button type="button" class="admin-item" id="btn-budget-target">🎯 Monthly Budget Target</button>
+                    </div>
+                </div>
                 <button class="btn-logout" id="btn-logout">Logout</button>
             </div>
         </nav>
@@ -492,6 +499,12 @@
                     <h2>Monthly Branch Target - <span id="mt-month-label">-</span></h2>
                     <p>OW Repair Revenue &amp; Spare Parts Counter Sale: target vs achievement, day by day</p>
                     <div id="mt-info" class="last-updated-info"></div>
+                    <div class="mt-period">
+                        <span class="mt-period-label">Budget period:</span>
+                        <span class="mt-month-wrap"><label for="mt-year">Year</label> <select id="mt-year" class="select-input"></select></span>
+                        <span class="mt-month-wrap"><label for="mt-month">Month</label> <select id="mt-month" class="select-input"></select></span>
+                        <span id="mt-lock-badge" class="mt-lock-badge" style="display:none;"></span>
+                    </div>
                 </div>
 
                 <div id="mt-kpis" class="mt-kpis"></div>
@@ -514,8 +527,7 @@
                 <div class="mt-toolbar">
                     <h3>Daily tracking</h3>
                     <div class="mt-controls">
-                        <span class="mt-month-wrap"><label for="mt-month">Month:</label> <select id="mt-month" class="select-input"></select></span>
-                        <div class="mt-seg" id="mt-metric-seg">
+                                                <div class="mt-seg" id="mt-metric-seg">
                             <button type="button" data-m="total" class="active">Total</button>
                             <button type="button" data-m="ow">OW Revenue</button>
                             <button type="button" data-m="counter">Counter Sale</button>
@@ -571,6 +583,37 @@
                         </div>
                         <div id="mt-brand-note" class="mt-break-note"></div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MONTHLY BUDGET TARGET MODAL (Admin) -->
+    <div id="budget-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-card budget-card">
+            <div class="modal-header">
+                <h3>🎯 Monthly Budget Target</h3>
+                <button class="btn-close" id="btn-close-budget" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="bg-picker">
+                    <span class="mt-month-wrap"><label for="bg-year">Year</label> <select id="bg-year" class="select-input"></select></span>
+                    <span class="mt-month-wrap"><label for="bg-month">Month</label> <select id="bg-month" class="select-input"></select></span>
+                    <span id="bg-status" class="bg-status"></span>
+                </div>
+                <div class="table-wrapper" style="max-height: 46vh;">
+                    <table id="bg-table" class="mt-table bg-table"></table>
+                </div>
+                <div class="bg-actions">
+                    <button type="button" class="btn-action" id="bg-fill-counter" title="Fill Counter Sale = OW target x 25% (80:20 split)">Counter = OW &times; 25%</button>
+                    <button type="button" class="btn-action bg-primary" id="bg-update">Update Target</button>
+                    <span id="bg-msg" class="bg-msg"></span>
+                </div>
+
+                <h4 class="bg-h4">Months &amp; Budget Lock</h4>
+                <p class="bg-help">Lock a month once it is completed. A locked month is stored permanently (targets and achievement) and is never changed by new uploads. New uploads then count for the next open month. <b>Delete</b> removes the locked data of that month.</p>
+                <div class="table-wrapper" style="max-height: 28vh;">
+                    <table id="bg-months" class="mt-table bg-table"></table>
                 </div>
             </div>
         </div>
@@ -815,6 +858,27 @@
         function sync() { dst.style.display = (src.style.display === '' || src.style.display === 'none') ? 'none' : 'flex'; }
         sync();
         new MutationObserver(sync).observe(src, { attributes: true, attributeFilter: ['style'] });
+    })();
+    </script>
+    <script>
+    (function () {
+        // Admin menu: visible only when app.js shows the User Mgmt item for an Admin (same trick as above).
+        var menu = document.getElementById('admin-menu'), btn = document.getElementById('btn-admin-menu'), dd = document.getElementById('admin-dropdown');
+        var um = document.getElementById('btn-user-mgmt');
+        if (!menu || !btn || !dd || !um) return;
+        function close() { dd.style.display = 'none'; btn.setAttribute('aria-expanded', 'false'); }
+        function sync() { var show = !(um.style.display === 'none'); menu.style.display = show ? 'inline-block' : 'none'; if (!show) close(); }
+        sync();
+        new MutationObserver(sync).observe(um, { attributes: true, attributeFilter: ['style'] });
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var open = dd.style.display !== 'none';
+            dd.style.display = open ? 'none' : 'flex';
+            btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+        });
+        dd.addEventListener('click', close);                       // choosing an item closes the menu
+        document.addEventListener('click', function (e) { if (!menu.contains(e.target)) close(); });
+        document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
     })();
     </script>
     <script src="app.js"></script>

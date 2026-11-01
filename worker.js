@@ -3,11 +3,12 @@
 //   GET  /api/data?type=pending -> the saved file itself (also: registration, closure)
 //   POST /api/data?type=pending -> save/replace the file (Admin key required)
 //   GET  /api/data?type=avatars -> small map of profile photos (shown on the login page)
+//   GET/POST /api/data?type=budget -> monthly branch targets + locked months (JSON, Admin key to save)
 //   POST /api/data?type=profile -> a user updates own name / password / photo (checked with their own password)
 // Needs: KV binding DASH_KV (set in wrangler.jsonc) and a Secret named ADMIN_UPLOAD_KEY.
 // Saving a new file under the same key automatically replaces (deletes) the old one.
 
-const TYPES = ["pending", "registration", "closure", "users", "repair", "counter"];
+const TYPES = ["pending", "registration", "closure", "users", "repair", "counter", "budget"];
 const MAX_BYTES = 10 * 1024 * 1024; // 10 MB (KV allows up to 25 MB per value)
 
 const json = (obj, status = 200) =>
@@ -107,6 +108,13 @@ async function handleData(request, env) {
       uploadedAt: new Date().toISOString(),
       size: body.byteLength
     };
+
+    if (type === "budget") {                              // monthly targets + locked months (JSON)
+      try {
+        const b = JSON.parse(new TextDecoder().decode(body));
+        if (!b || typeof b !== "object" || Array.isArray(b)) throw new Error("not an object");
+      } catch { return json({ error: "Budget data is not valid JSON" }, 400); }
+    }
 
     await env.DASH_KV.put("file:" + type, body);        // overwrites previous file
     const info = await readInfo();

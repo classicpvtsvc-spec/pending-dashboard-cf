@@ -6,9 +6,10 @@
    Only app.js helpers are reused (currentUser, hasPerm, parseDateString ...).
    ========================================================================== */
 
-/* ---- 1. MONTHLY TARGETS (edit here every month, from the target e-mail) ----
-   ow      = Out-of-Warranty collection target (80%)
-   counter = Spare-parts counter sale target   (20%)                          */
+/* ---- 1. BUILT-IN TARGETS (fallback only) ----
+   Targets are now entered by the Admin: Admin icon > Monthly Budget Target (no coding needed).
+   This list is used ONLY until the first budget is saved online, then the saved budget replaces it.
+   ow = Out-of-Warranty collection target (80%),  counter = Spare-parts counter sale target (20%)  */
 const MONTHLY_TARGETS = {
     '2026-10': {
         'Jeddah':   { ow: 328970.00, counter: 82242.50 },
@@ -55,7 +56,7 @@ const WARRANTY_CATEGORY_MAP = {   // WARRANTY_CODE (upper case) -> OW / W
 /* ---- 3. STATE ---- */
 let repairRows = [];    // { date:'YYYY-MM-DD', code:'9340', w:'AW', amt:123.4 }
 let counterRows = [];   // { date, code, w:'', amt }
-let mtMonth = null;
+let mtMonth = null;     // month shown on the dashboard ('YYYY-MM'); null = the open (current) budget month
 let mtMetric = 'total';
 const mtCharts = {};
 const mtMsg = { repair: '', counter: '' };
@@ -212,8 +213,7 @@ async function loadRevenueFile(file, type, save) {
         mtMsg[type] = '';
 
         if (save) {
-            const last = rows.reduce((m, r) => r.date > m ? r.date : m, '');
-            if (last && MONTHLY_TARGETS[last.slice(0, 7)]) mtMonth = last.slice(0, 7);
+            mtMonth = mtActiveMonth();      // a new upload counts for the open (not yet locked) budget month
             if (currentUser && currentUser.role === 'Admin') saveAdminUploadToCloud(mtCompactFile(type, rows, file.name), type);
         }
         renderMonthlyTarget();
@@ -242,11 +242,121 @@ function mtTodayKey() {
 const MT_DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MT_MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+/* ---- BUDGET DATA (set by the Admin in  Admin icon > Monthly Budget Target, saved online for everyone) ----
+   budget.targets = { 'YYYY-MM': { Branch: { ow, counter } } }
+   budget.locks   = { 'YYYY-MM': { lockedAt, lockedBy, targets, raw } }   raw = final achievement snapshot of that month */
+let budget = { targets: {}, locks: {} };
+let budgetLoaded = false;      // true once a saved budget exists online; until then the built-in MONTHLY_TARGETS above is used
+
+function mtNormBudget(b) {
+    b = (b && typeof b === 'object') ? b : {};
+    return {
+        v: 1,
+        targets: (b.targets && typeof b.targets === 'object') ? b.targets : {},
+        locks: (b.locks && typeof b.locks === 'object') ? b.locks : {},
+        updatedAt: b.updatedAt || '', updatedBy: b.updatedBy || ''
+    };
+}
+
+/** Called by app.js with the saved budget file (everyone with the Monthly Target access). */
+function mtLoadBudgetText(text) {
+    try { budget = mtNormBudget(JSON.parse(text)); budgetLoaded = true; }
+    catch (e) { console.warn('Saved budget is unreadable:', e); }
+}
+
+function mtTargetSource() { return budgetLoaded ? budget.targets : MONTHLY_TARGETS; }
+function mtTargets(month) {
+    if (budget.locks[month]) return budget.locks[month].targets;
+    const t = mtTargetSource()[month];
+    return t && Object.keys(t).length ? t : null;
+}
+function mtAllMonths() {
+    const set = new Set(Object.keys(mtTargetSource()).filter(m => mtTargets(m)));
+    Object.keys(budget.locks).forEach(m => set.add(m));
+    return Array.from(set).sort();
+}
+/** The month that new uploads count for = the earliest month that has a target and is not locked yet. */
+function mtOpenMonths() { return mtAllMonths().filter(m => !budget.locks[m]); }
+function mtActiveMonth() {
+    const open = mtOpenMonths();
+    if (open.length) return open[0];
+    const all = mtAllMonths();
+    return all.length ? all[all.length - 1] : '';
+}
+function mtMonthLabel(m) { return `${MT_MON[+m.slice(5, 7) - 1]} ${m.slice(0, 4)}`; }
+
+/* ==========================================================================
+   COLLECT: reads the uploaded rows for one month (all branches that have a target).
+   The result ("raw") is exactly what is stored when the Admin locks the month.
+   ========================================================================== */
+function mtLockedBefore(month) {
+    const l = Object.keys(budget.locks).filter(m => m < month).sort();
+    return l.length ? l[l.length - 1] : '';
+}
+
+function mtCollect(month, targets) {
+    const [Y, M] = month.split('-').map(Number);
+    const dim = new Date(Y, M, 0).getDate();
+    const first = month + '-01';
+    const lb = mtLockedBefore(month);
+    const coveredTo = lb ? lb + '-31' : '';     // credits dated up to the end of an earlier LOCKED month are already inside that lock
+    const names = Object.keys(targets);
+    const raw = { asOf: '', ow: {}, counter: {}, credit: {}, wt: {}, br: {}, brCredit: {}, noTarget: {}, unmapped: 0, wtMsg: '', brMsg: '' };
+    names.forEach(n => {
+        raw.ow[n] = new Array(dim).fill(0); raw.counter[n] = new Array(dim).fill(0);
+        raw.credit[n] = 0; raw.wt[n] = {}; raw.br[n] = {}; raw.brCredit[n] = 0;
+    });
+    const brandName = b => { const num = parseInt(b, 10); return (!isNaN(num) && BRAND_NAME_MAP[num]) ? BRAND_NAME_MAP[num] : (b ? 'Brand ' + b : 'Not specified'); };
+
+    const feed = (rows, metric) => rows.forEach(r => {
+        const name = BRANCH_CODE_MAP[r.code];
+        if (metric === 'counter' && r.amt < 0 && r.date < first) {       // credit of an older invoice date: no day row, only deducted
+            if (coveredTo && r.date <= coveredTo) return;
+            if (name && raw.credit[name] !== undefined) {
+                raw.credit[name] += r.amt;
+                const k = brandName(r.b);
+                raw.br[name][k] = (raw.br[name][k] || 0) + r.amt;
+                raw.brCredit[name] += r.amt;
+            }
+            return;
+        }
+        if (!r.date.startsWith(month)) return;
+        if (r.date > raw.asOf) raw.asOf = r.date;
+        if (metric === 'ow' && WARRANTY_CATEGORY_MAP[r.w] !== 'OW') return;
+        if (!name) { raw.unmapped += r.amt; return; }
+        if (raw[metric][name]) {
+            raw[metric][name][+r.date.slice(8, 10) - 1] += r.amt;
+            if (metric === 'ow') { const k = r.wt || 'Not specified'; raw.wt[name][k] = (raw.wt[name][k] || 0) + r.amt; }
+            else { const k = brandName(r.b); raw.br[name][k] = (raw.br[name][k] || 0) + r.amt; }
+        } else {
+            raw.noTarget[name] = raw.noTarget[name] || { ow: 0, counter: 0 };
+            raw.noTarget[name][metric] += r.amt;
+        }
+    });
+    feed(repairRows, 'ow');
+    feed(counterRows, 'counter');
+
+    if (!repairRows.length) raw.wtMsg = 'Repair Revenue file not uploaded yet.';
+    else if (repairRows.every(r => r.wt === null)) raw.wtMsg = 'WARRANTY_TYPE is not in the saved Repair Revenue file. Please upload the Repair Revenue file again.';
+    if (!counterRows.length) raw.brMsg = 'Counter Sale file not uploaded yet.';
+    else if (counterRows.every(r => r.b === null)) raw.brMsg = 'BRAND_CD is not in the saved Counter Sale file. Please upload the Counter Sale file again.';
+    return raw;
+}
+
+function mtRound(o) {       // keeps the saved snapshot small
+    if (typeof o === 'number') return Math.round(o * 100) / 100;
+    if (Array.isArray(o)) return o.map(mtRound);
+    if (o && typeof o === 'object') { const r = {}; Object.keys(o).forEach(k => { r[k] = mtRound(o[k]); }); return r; }
+    return o;
+}
+
 function mtModel() {
-    const months = Object.keys(MONTHLY_TARGETS).sort();
-    const nowMonth = mtTodayKey().slice(0, 7);
-    if (!mtMonth || !months.includes(mtMonth)) mtMonth = months.includes(nowMonth) ? nowMonth : months[months.length - 1];
-    const targets = MONTHLY_TARGETS[mtMonth];
+    const months = mtAllMonths();
+    if (!months.length) return null;
+    if (!mtMonth || !months.includes(mtMonth)) mtMonth = mtActiveMonth();
+    const lock = budget.locks[mtMonth] || null;
+    const targets = lock ? lock.targets : mtTargets(mtMonth);
+    const raw = lock ? lock.raw : mtCollect(mtMonth, targets);
     const [Y, M] = mtMonth.split('-').map(Number);
     const dim = new Date(Y, M, 0).getDate();
 
@@ -266,49 +376,30 @@ function mtModel() {
     let names = Object.keys(targets);
     if (sel !== 'ALL') { const k = mtBKey(sel); names = names.filter(n => mtBKey(n) === k); }
 
-    const ach = { ow: {}, counter: {} };
-    names.forEach(n => { ach.ow[n] = new Array(dim).fill(0); ach.counter[n] = new Array(dim).fill(0); });
-    const credit = {};      // Counter Sale negative Net Price lines dated BEFORE this month: no day row, only deducted from the totals
-    names.forEach(n => { credit[n] = 0; });
-
-    const noTarget = {};     // branches that have data but no target (shown as a note only)
-    let unmapped = 0, maxDate = '';
-    const feed = (rows, metric) => rows.forEach(r => {
-        if (metric === 'counter' && r.amt < 0 && r.date < mtMonth + '-01') {
-            const cn = BRANCH_CODE_MAP[r.code];
-            if (cn && credit[cn] !== undefined) credit[cn] += r.amt;
-            return;
-        }
-        if (!r.date.startsWith(mtMonth)) return;
-        if (r.date > maxDate) maxDate = r.date;
-        if (metric === 'ow' && WARRANTY_CATEGORY_MAP[r.w] !== 'OW') return;
-        const name = BRANCH_CODE_MAP[r.code];
-        if (!name) { unmapped += r.amt; return; }
-        if (ach[metric][name]) ach[metric][name][idx[r.date]] += r.amt;
-        else if (sel === 'ALL' && !targets[name]) {
-            noTarget[name] = noTarget[name] || { ow: 0, counter: 0 };
-            noTarget[name][metric] += r.amt;
-        }
+    const ach = { ow: {}, counter: {} }, credit = {};
+    names.forEach(n => {
+        ach.ow[n] = (raw.ow[n] || []).slice(); ach.counter[n] = (raw.counter[n] || []).slice();
+        while (ach.ow[n].length < dim) ach.ow[n].push(0);
+        while (ach.counter[n].length < dim) ach.counter[n].push(0);
+        credit[n] = (raw.credit && raw.credit[n]) || 0;
     });
-    feed(repairRows, 'ow');
-    feed(counterRows, 'counter');
+    const noTarget = sel === 'ALL' ? (raw.noTarget || {}) : {};
 
-    const asOfIdx = maxDate ? idx[maxDate] : -1;
+    const asOf = lock ? `${mtMonth}-${mtPad(dim)}` : raw.asOf;     // a locked month is complete
+    const asOfIdx = asOf ? idx[asOf] : -1;
     const remW = days.reduce((s, x, i) => s + (i > asOfIdx ? x.w : 0), 0);
     const doneW = totalW - remW;
 
-    // per-branch numbers
     const sum = a => a.reduce((s, v) => s + v, 0);
     const branch = {};
     names.forEach(n => {
         branch[n] = {
-            ow: { T: targets[n].ow, A: sum(ach.ow[n]) },
-            counter: { T: targets[n].counter, A: sum(ach.counter[n]) + credit[n] }
+            ow: { T: targets[n].ow || 0, A: sum(ach.ow[n]) },
+            counter: { T: targets[n].counter || 0, A: sum(ach.counter[n]) + credit[n] }
         };
         branch[n].total = { T: branch[n].ow.T + branch[n].counter.T, A: branch[n].ow.A + branch[n].counter.A };
     });
 
-    // overall series for a metric (ow / counter / total)
     const series = metric => {
         const daily = new Array(dim).fill(0);
         let T = 0;
@@ -332,8 +423,9 @@ function mtModel() {
 
     return {
         month: mtMonth, months: months, days: days, totalW: totalW, doneW: doneW, remW: remW, dim: dim,
-        names: names, branch: branch, sel: sel, asOf: maxDate, asOfIdx: asOfIdx,
-        noTarget: noTarget, unmapped: unmapped,
+        names: names, branch: branch, sel: sel, asOf: asOf, asOfIdx: asOfIdx,
+        noTarget: noTarget, unmapped: lock ? 0 : (raw.unmapped || 0),
+        lock: lock, raw: raw, noOpen: mtOpenMonths().length === 0,
         s: { ow: series('ow'), counter: series('counter'), total: series('total') }
     };
 }
@@ -402,19 +494,26 @@ function mtRenderInfo(M) {
     if (!el) return;
     const isAdmin = currentUser && currentUser.role === 'Admin';
     let html = `<span class="lu-item">📅 Working days: <strong>${M.totalW}</strong> (Fri off, Sat half) &middot; done <strong>${M.doneW}</strong> &middot; remaining <strong>${M.remW}</strong></span>`;
-    ['repair', 'counter'].forEach(t => {
-        const rows = t === 'repair' ? repairRows : counterRows;
-        const info = (typeof cloudInfo !== 'undefined') ? cloudInfo[t] : null;
-        if (rows.length) {
-            html += `<span class="lu-item">🕒 ${MT_LABEL[t]} last uploaded (Online): ` +
-                    (info && info.uploadedAt ? `<strong>${escapeEmailHtml(formatCloudTime(info.uploadedAt))}</strong>` + (info.uploadedBy ? ` by ${escapeEmailHtml(info.uploadedBy)}` : '') : '<strong>-</strong>') + `</span>`;
-        } else {
-            html += `<span class="lu-temp">${MT_LABEL[t]} data not uploaded yet${isAdmin ? ' (use the ⇫ button at the top)' : ''}</span>`;
-        }
-        if (mtMsg[t]) html += `<span class="lu-error">${escapeEmailHtml(mtMsg[t])}</span>`;
-    });
-    if (M.asOf) html += `<span class="lu-item">Data up to: <strong>${mtDM(M.asOf)}</strong></span>`;
-    if (M.unmapped) html += `<span class="lu-error">⚠ ${mtFmt(M.unmapped)} amount skipped: branch code not in the branch list</span>`;
+    if (M.lock) {
+        html += `<span class="lu-item">🔒 Budget locked${M.lock.lockedAt ? ' on <strong>' + escapeEmailHtml(formatCloudTime(M.lock.lockedAt)) + '</strong>' : ''}` +
+                `${M.lock.lockedBy ? ' by ' + escapeEmailHtml(M.lock.lockedBy) : ''} &mdash; final data, new uploads do not change it</span>`;
+        if (M.raw && M.raw.asOf) html += `<span class="lu-item">Data up to: <strong>${mtDM(M.raw.asOf)}</strong></span>`;
+    } else {
+        ['repair', 'counter'].forEach(t => {
+            const rows = t === 'repair' ? repairRows : counterRows;
+            const info = (typeof cloudInfo !== 'undefined') ? cloudInfo[t] : null;
+            if (rows.length) {
+                html += `<span class="lu-item">🕒 ${MT_LABEL[t]} last uploaded (Online): ` +
+                        (info && info.uploadedAt ? `<strong>${escapeEmailHtml(formatCloudTime(info.uploadedAt))}</strong>` + (info.uploadedBy ? ` by ${escapeEmailHtml(info.uploadedBy)}` : '') : '<strong>-</strong>') + `</span>`;
+            } else {
+                html += `<span class="lu-temp">${MT_LABEL[t]} data not uploaded yet${isAdmin ? ' (use the ⇫ button at the top)' : ''}</span>`;
+            }
+            if (mtMsg[t]) html += `<span class="lu-error">${escapeEmailHtml(mtMsg[t])}</span>`;
+        });
+        if (M.asOf) html += `<span class="lu-item">Data up to: <strong>${mtDM(M.asOf)}</strong></span>`;
+        if (M.unmapped) html += `<span class="lu-error">⚠ ${mtFmt(M.unmapped)} amount skipped: branch code not in the branch list</span>`;
+    }
+    if (M.noOpen) html += `<span class="lu-temp">All budget months are locked.${isAdmin ? ' Set the next month target in Admin &gt; Monthly Budget Target; new uploads will count for it.' : ' The next month target has not been set yet.'}</span>`;
     el.innerHTML = html;
 }
 
@@ -435,47 +534,20 @@ function mtBreakdownTable(tblId, noteId, firstHead, rows, emptyMsg, note) {
 }
 
 function mtRenderBreakdowns(M) {
-    const names = new Set(M.names), month = M.month;
-
-    // 1) Repair Revenue - Warranty Type wise, OW category only (same rows/branches as the OW Revenue total)
-    let wtRows = null, wtMsg = '';
-    if (!repairRows.length) wtMsg = 'Repair Revenue file not uploaded yet.';
-    else if (repairRows.every(r => r.wt === null)) wtMsg = 'WARRANTY_TYPE is not in the saved Repair Revenue file. Please upload the Repair Revenue file again.';
-    else {
+    const raw = M.raw;
+    const agg = src => {
         const g = {};
-        repairRows.forEach(r => {
-            if (!r.date.startsWith(month) || WARRANTY_CATEGORY_MAP[r.w] !== 'OW') return;
-            const n = BRANCH_CODE_MAP[r.code];
-            if (!n || !names.has(n)) return;
-            const k = r.wt || 'Not specified';
-            g[k] = (g[k] || 0) + r.amt;
-        });
-        wtRows = Object.keys(g).map(k => ({ k: k, v: g[k] })).sort((a, b) => b.v - a.v);
-        if (!wtRows.length) { wtRows = null; wtMsg = 'No OW Repair Revenue for this month.'; }
-    }
-    mtBreakdownTable('table-mt-wtype', 'mt-wtype-note', 'Warranty Type', wtRows, wtMsg, '');
+        M.names.forEach(n => { const o = (src && src[n]) || {}; Object.keys(o).forEach(k => { g[k] = (g[k] || 0) + o[k]; }); });
+        const rows = Object.keys(g).map(k => ({ k: k, v: g[k] })).sort((a, b) => b.v - a.v);
+        return rows.length ? rows : null;
+    };
+    const wtRows = raw.wtMsg ? null : agg(raw.wt);
+    mtBreakdownTable('table-mt-wtype', 'mt-wtype-note', 'Warranty Type', wtRows, raw.wtMsg || 'No OW Repair Revenue for this month.', '');
 
-    // 2) Counter Sale - Brand wise (same rows/branches as the Counter Sale total, negative lines included)
-    let brRows = null, brMsg = '', brNote = '';
-    if (!counterRows.length) brMsg = 'Counter Sale file not uploaded yet.';
-    else if (counterRows.every(r => r.b === null)) brMsg = 'BRAND_CD is not in the saved Counter Sale file. Please upload the Counter Sale file again.';
-    else {
-        const g = {}; let credit = 0;
-        counterRows.forEach(r => {
-            const older = r.amt < 0 && r.date < month + '-01';      // credit lines of older invoice dates: deducted from the total
-            if (!older && !r.date.startsWith(month)) return;
-            const n = BRANCH_CODE_MAP[r.code];
-            if (!n || !names.has(n)) return;
-            const num = parseInt(r.b, 10);
-            const k = (!isNaN(num) && BRAND_NAME_MAP[num]) ? BRAND_NAME_MAP[num] : (r.b ? 'Brand ' + r.b : 'Not specified');
-            g[k] = (g[k] || 0) + r.amt;
-            if (older) credit += r.amt;
-        });
-        brRows = Object.keys(g).map(k => ({ k: k, v: g[k] })).sort((a, b) => b.v - a.v);
-        if (!brRows.length) { brRows = null; brMsg = 'No Counter Sale for this month.'; }
-        if (credit) brNote = `Includes credit of <b class="mt-down">-${mtFmt(Math.abs(credit))}</b> (negative Net Price of older invoice dates).`;
-    }
-    mtBreakdownTable('table-mt-brand', 'mt-brand-note', 'Brand', brRows, brMsg, brNote);
+    const brRows = raw.brMsg ? null : agg(raw.br);
+    const credit = M.names.reduce((s, n) => s + ((raw.brCredit && raw.brCredit[n]) || 0), 0);
+    mtBreakdownTable('table-mt-brand', 'mt-brand-note', 'Brand', brRows, raw.brMsg || 'No Counter Sale for this month.',
+        credit ? `Includes credit of <b class="mt-down">-${mtFmt(Math.abs(credit))}</b> (negative Net Price of older invoice dates).` : '');
 }
 
 function mtRenderBranchTable(M) {
@@ -639,19 +711,46 @@ function mtRenderCharts(M) {
     });
 }
 
+function mtRenderEmpty() {
+    const lbl = document.getElementById('mt-month-label'); if (lbl) lbl.textContent = '-';
+    const isAdmin = currentUser && currentUser.role === 'Admin';
+    const info = document.getElementById('mt-info');
+    if (info) info.innerHTML = `<span class="lu-temp">No monthly budget target is set yet.${isAdmin ? ' Use Admin icon &gt; Monthly Budget Target.' : ''}</span>`;
+    ['mt-kpis', 'table-mt-branch', 'table-mt-daily', 'table-mt-wtype', 'table-mt-brand', 'mt-notarget'].forEach(id => { const e = document.getElementById(id); if (e) e.innerHTML = ''; });
+    ['mt-chart-daily', 'mt-chart-cum', 'mt-chart-branch'].forEach(id => { if (mtCharts[id]) { mtCharts[id].destroy(); mtCharts[id] = null; } });
+    ['mt-year', 'mt-month'].forEach(id => { const e = document.getElementById(id); if (e) e.innerHTML = ''; });
+    const b = document.getElementById('mt-lock-badge'); if (b) b.style.display = 'none';
+}
+
+function mtRenderPeriod(M) {
+    const ysel = document.getElementById('mt-year'), msel = document.getElementById('mt-month');
+    const yr = M.month.slice(0, 4);
+    if (ysel) {
+        const years = Array.from(new Set(M.months.map(m => m.slice(0, 4)))).sort();
+        ysel.innerHTML = years.map(y => `<option value="${y}" ${y === yr ? 'selected' : ''}>${y}</option>`).join('');
+    }
+    if (msel) {
+        msel.innerHTML = M.months.filter(m => m.startsWith(yr)).map(m =>
+            `<option value="${m}" ${m === M.month ? 'selected' : ''}>${budget.locks[m] ? '🔒 ' : ''}${MT_MON[+m.slice(5, 7) - 1]}</option>`).join('');
+    }
+    const badge = document.getElementById('mt-lock-badge');
+    if (badge) {
+        badge.style.display = '';
+        badge.className = 'mt-lock-badge ' + (M.lock ? 'locked' : 'open');
+        badge.textContent = M.lock ? '🔒 Locked - final data' : (M.month === mtActiveMonth() ? '● Current budget month' : '○ Open');
+    }
+}
+
 function renderMonthlyTarget() {
     const sec = document.getElementById('month-target-section');
     if (!sec || !currentUser || !hasPerm('monthTarget')) return;
 
     const M = mtModel();
+    if (!M) { mtRenderEmpty(); return; }
     const lbl = document.getElementById('mt-month-label');
-    if (lbl) lbl.textContent = `${MT_MON[+M.month.slice(5, 7) - 1]} ${M.month.slice(0, 4)}`;
+    if (lbl) lbl.textContent = mtMonthLabel(M.month);
 
-    const sel = document.getElementById('mt-month');
-    if (sel) {
-        sel.innerHTML = M.months.map(m => `<option value="${m}" ${m === M.month ? 'selected' : ''}>${MT_MON[+m.slice(5, 7) - 1]} ${m.slice(0, 4)}</option>`).join('');
-        sel.parentElement.style.display = M.months.length > 1 ? '' : 'none';
-    }
+    mtRenderPeriod(M);
     document.querySelectorAll('#mt-metric-seg button').forEach(b => b.classList.toggle('active', b.dataset.m === mtMetric));
 
     mtRenderInfo(M);
@@ -666,14 +765,239 @@ function renderMonthlyTarget() {
     mtRenderDailyTable(M);
     mtRenderBreakdowns(M);
     mtRenderCharts(M);
+    if (document.getElementById('budget-modal') && document.getElementById('budget-modal').style.display !== 'none') bgRenderMonths();
+}
+
+/* ==========================================================================
+   ADMIN: MONTHLY BUDGET TARGET  (Admin icon > Monthly Budget Target)
+   - pick Year + Month, type OW / Counter Sale target per branch, press Update Target
+   - Lock a completed month: its final targets + achievement are stored permanently
+   - Delete removes the locked data (or the target of an open month)
+   ========================================================================== */
+const MT_BRANCHES = ['Jeddah', 'Riyadh', 'Khobar', 'Madinah', 'Makkah', 'Taif', 'Qassim', 'Hassa', 'Al Kharj', 'Jizan', 'Tabuke', 'Yanbu', 'Khamis'];
+let bgBusy = false;
+
+const bgEl = id => document.getElementById(id);
+const bgIsAdmin = () => currentUser && currentUser.role === 'Admin';
+function bgMonthKey() { return `${bgEl('bg-year').value}-${bgEl('bg-month').value}`; }
+
+function bgMsg(text, ok) {
+    const e = bgEl('bg-msg'); if (!e) return;
+    e.textContent = text || ''; e.className = 'bg-msg ' + (text ? (ok ? 'ok' : 'err') : '');
+}
+
+function bgOpen() {
+    if (!bgIsAdmin()) return;
+    const now = new Date().getFullYear();
+    const active = mtActiveMonth() || `${now}-${mtPad(new Date().getMonth() + 1)}`;
+    const years = new Set([now - 1, now, now + 1, now + 2]);
+    mtAllMonths().forEach(m => years.add(+m.slice(0, 4)));
+    bgEl('bg-year').innerHTML = Array.from(years).sort().map(y => `<option value="${y}">${y}</option>`).join('');
+    bgEl('bg-month').innerHTML = MT_MON.map((n, i) => `<option value="${mtPad(i + 1)}">${n}</option>`).join('');
+    bgEl('bg-year').value = active.slice(0, 4);
+    bgEl('bg-month').value = active.slice(5, 7);
+    bgMsg('');
+    bgRenderTargets();
+    bgRenderMonths();
+    bgEl('budget-modal').style.display = 'flex';
+}
+
+function bgRenderTargets() {
+    const month = bgMonthKey();
+    const lock = budget.locks[month] || null;
+    const cur = (lock ? lock.targets : mtTargets(month)) || {};
+    const branches = MT_BRANCHES.concat(Object.keys(cur).filter(n => !MT_BRANCHES.includes(n)));
+    const dis = lock ? 'disabled' : '';
+    let body = '<tbody>';
+    branches.forEach(n => {
+        const t = cur[n] || {};
+        body += `<tr><td class="bold">${escapeEmailHtml(n)}</td>` +
+            `<td><input type="number" class="bg-input" min="0" step="0.01" data-b="${escapeEmailHtml(n)}" data-k="ow" value="${t.ow ? t.ow : ''}" placeholder="0" ${dis}></td>` +
+            `<td><input type="number" class="bg-input" min="0" step="0.01" data-b="${escapeEmailHtml(n)}" data-k="counter" value="${t.counter ? t.counter : ''}" placeholder="0" ${dis}></td>` +
+            `<td class="text-right bg-rowtot" data-tot="${escapeEmailHtml(n)}">0</td></tr>`;
+    });
+    body += `<tr class="daily-total-row"><td class="bold">Total</td><td class="text-right bold" id="bg-tot-ow">0</td><td class="text-right bold" id="bg-tot-counter">0</td><td class="text-right bold" id="bg-tot-all">0</td></tr></tbody>`;
+    bgEl('bg-table').innerHTML = '<thead><tr><th>Branch</th><th class="text-right">OW Revenue Target</th><th class="text-right">Counter Sale Target</th><th class="text-right">Total</th></tr></thead>' + body;
+
+    const st = bgEl('bg-status');
+    st.className = 'bg-status ' + (lock ? 'locked' : 'open');
+    st.textContent = lock ? `🔒 ${mtMonthLabel(month)} is locked - targets cannot be changed (Delete the locked data to edit)` : `${mtMonthLabel(month)} - ${mtTargets(month) ? 'target set, open' : 'no target set yet'}`;
+    bgEl('bg-update').disabled = !!lock;
+    bgEl('bg-fill-counter').disabled = !!lock;
+    bgSumTotals();
+}
+
+function bgSumTotals() {
+    const t = { ow: 0, counter: 0 }, row = {};
+    document.querySelectorAll('#bg-table .bg-input').forEach(i => {
+        const v = parseFloat(i.value) || 0;
+        t[i.dataset.k] += v; row[i.dataset.b] = (row[i.dataset.b] || 0) + v;
+    });
+    document.querySelectorAll('#bg-table [data-tot]').forEach(c => { c.textContent = mtFmt(row[c.dataset.tot] || 0); });
+    bgEl('bg-tot-ow').textContent = mtFmt(t.ow); bgEl('bg-tot-counter').textContent = mtFmt(t.counter); bgEl('bg-tot-all').textContent = mtFmt(t.ow + t.counter);
+}
+
+function bgReadInputs() {
+    const targets = {};
+    let bad = '';
+    document.querySelectorAll('#bg-table .bg-input').forEach(i => {
+        const raw = i.value.trim();
+        const v = raw === '' ? 0 : Number(raw);
+        if (!isFinite(v) || v < 0) { bad = `Invalid amount for ${i.dataset.b}`; return; }
+        if (!targets[i.dataset.b]) targets[i.dataset.b] = { ow: 0, counter: 0 };
+        targets[i.dataset.b][i.dataset.k] = Math.round(v * 100) / 100;
+    });
+    if (bad) throw new Error(bad);
+    Object.keys(targets).forEach(n => { if (!targets[n].ow && !targets[n].counter) delete targets[n]; });
+    if (!Object.keys(targets).length) throw new Error('Enter at least one branch target');
+    return targets;
+}
+
+function bgRenderMonths() {
+    const tbl = bgEl('bg-months'); if (!tbl) return;
+    const months = mtAllMonths().slice().reverse();
+    let body = '<tbody>';
+    if (!months.length) body += '<tr><td colspan="6" class="mt-break-empty">No month has a target yet.</td></tr>';
+    months.forEach(m => {
+        const lock = budget.locks[m], t = lock ? lock.targets : (mtTargets(m) || {});
+        const ow = Object.keys(t).reduce((s, n) => s + (t[n].ow || 0), 0), ct = Object.keys(t).reduce((s, n) => s + (t[n].counter || 0), 0);
+        const status = lock
+            ? `<span class="bg-chip locked">🔒 Locked</span><small> ${escapeEmailHtml(formatCloudTime(lock.lockedAt))}${lock.lockedBy ? ' by ' + escapeEmailHtml(lock.lockedBy) : ''}</small>`
+            : `<span class="bg-chip open">${m === mtActiveMonth() ? 'Current' : 'Open'}</span>`;
+        body += `<tr><td class="bold"><a href="#" class="bg-pick" data-m="${m}">${mtMonthLabel(m)}</a></td><td class="text-right">${mtFmt(ow)}</td><td class="text-right">${mtFmt(ct)}</td><td class="text-right bold">${mtFmt(ow + ct)}</td><td>${status}</td>` +
+            `<td class="bg-btns">${lock ? '' : `<button type="button" class="btn-action bg-lock" data-act="lock" data-m="${m}">🔒 Lock</button>`}` +
+            `<button type="button" class="btn-action bg-del" data-act="delete" data-m="${m}">🗑 Delete</button></td></tr>`;
+    });
+    tbl.innerHTML = '<thead><tr><th>Month</th><th class="text-right">OW Target</th><th class="text-right">Counter Target</th><th class="text-right">Total</th><th>Status</th><th>Action</th></tr></thead>' + body + '</tbody>';
+}
+
+/** Read the latest saved budget, apply one change, save it back (so two admins never overwrite each other's months). */
+async function bgSave(mutator) {
+    let key = getAdminUploadKey(false);
+    if (!key) throw new Error('No Admin Upload Key entered');
+    for (let attempt = 0; attempt < 2; attempt++) {
+        let latest;
+        const r = await fetch(`${CLOUD_API}?type=budget`, { cache: 'no-store' });
+        if (r.ok) latest = mtNormBudget(JSON.parse(await r.text()));
+        else if (r.status === 404) { latest = mtNormBudget({ targets: JSON.parse(JSON.stringify(MONTHLY_TARGETS)) }); }   // first save: start from the built-in list
+        else throw new Error(`Could not read the saved budget (server ${r.status})`);
+        mutator(latest);
+        latest.updatedAt = new Date().toISOString(); latest.updatedBy = displayName(currentUser);
+
+        const res = await fetch(`${CLOUD_API}?type=budget`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream', 'x-admin-key': key, 'x-file-name': encodeURIComponent('budget.json'), 'x-uploaded-by': encodeURIComponent(displayName(currentUser)) },
+            body: new Blob([JSON.stringify(latest)], { type: 'application/json' })
+        });
+        if (res.status === 401) { sessionStorage.removeItem(CLOUD_KEY_STORAGE); key = getAdminUploadKey(true); if (!key) throw new Error('Invalid Admin Upload Key'); continue; }
+        if (!res.ok) { let m = `Server error ${res.status}`; try { m = (await res.json()).error || m; } catch (e) {} throw new Error(m); }
+        const saved = await res.json();
+        budget = latest; budgetLoaded = true;
+        if (typeof cloudInfo !== 'undefined') cloudInfo.budget = saved.meta;
+        return;
+    }
+    throw new Error('Invalid Admin Upload Key');
+}
+
+async function bgRun(label, fn) {
+    if (bgBusy || !bgIsAdmin()) return;
+    bgBusy = true; bgMsg('Saving...', true);
+    document.querySelectorAll('#budget-modal button').forEach(b => { b.dataset.was = b.disabled ? '1' : ''; b.disabled = true; });
+    try { await fn(); bgMsg(label, true); }
+    catch (err) { console.error(err); bgMsg('⚠ ' + err.message, false); }
+    bgBusy = false;
+    document.querySelectorAll('#budget-modal button').forEach(b => { b.disabled = b.dataset.was === '1'; });
+    bgRenderTargets(); bgRenderMonths(); renderMonthlyTarget();
+}
+
+function bgUpdate() {
+    const month = bgMonthKey();
+    let targets;
+    try { targets = bgReadInputs(); } catch (e) { bgMsg('⚠ ' + e.message, false); return; }
+    bgRun(`✓ ${mtMonthLabel(month)} target saved`, async () => {
+        await bgSave(latest => {
+            if (latest.locks[month]) throw new Error(`${mtMonthLabel(month)} is locked. Delete its locked data first to change the target.`);
+            latest.targets[month] = targets;
+        });
+        mtMonth = month;       // dashboard follows the updated month
+    });
+}
+
+function bgLock(month) {
+    const targets = mtTargets(month);
+    if (!targets) { bgMsg('⚠ Set the target for this month first', false); return; }
+    if (budget.locks[month]) return;
+    const [Y, M] = month.split('-').map(Number);
+    const lastDay = `${month}-${mtPad(new Date(Y, M, 0).getDate())}`;
+    const raw = mtCollect(month, targets);
+    let q = `Lock ${mtMonthLabel(month)}?\n\nThe final targets and achievement (data up to ${raw.asOf ? mtDM(raw.asOf) : 'none'}) will be stored permanently and will not be changed by new uploads. New Repair Revenue / Counter Sale uploads will then count for the next open month.\n\nContinue?`;
+    if (!raw.asOf) q = `No Repair Revenue / Counter Sale data dated ${mtMonthLabel(month)} is loaded, so the locked month would show zero achievement.\n\n` + q;
+    else if (mtTodayKey() <= lastDay) q = `${mtMonthLabel(month)} is not finished yet.\n\n` + q;
+    if (!confirm(q)) return;
+    const snap = { lockedAt: new Date().toISOString(), lockedBy: displayName(currentUser), targets: mtRound(targets), raw: mtRound(raw) };
+    bgRun(`✓ ${mtMonthLabel(month)} locked`, async () => {
+        await bgSave(latest => {
+            if (latest.locks[month]) throw new Error(`${mtMonthLabel(month)} is already locked`);
+            latest.locks[month] = snap;
+            if (!latest.targets[month]) latest.targets[month] = snap.targets;
+        });
+        mtMonth = mtActiveMonth();     // uploads from now on count for the next open month
+    });
+}
+
+function bgDelete(month) {
+    const locked = !!budget.locks[month];
+    const msg = locked
+        ? `Delete the LOCKED data of ${mtMonthLabel(month)}?\n\nThe month goes back to open and is recalculated from the currently uploaded files (if they no longer contain this month it will show zero). The target is kept. This cannot be undone.`
+        : `Delete the target of ${mtMonthLabel(month)}?\n\nThis cannot be undone.`;
+    if (!confirm(msg)) return;
+    bgRun(locked ? `✓ Locked data of ${mtMonthLabel(month)} deleted` : `✓ Target of ${mtMonthLabel(month)} deleted`, async () => {
+        await bgSave(latest => {
+            if (latest.locks[month]) delete latest.locks[month];
+            else delete latest.targets[month];
+        });
+        if (mtMonth === month || !mtAllMonths().includes(mtMonth)) mtMonth = null;
+    });
+}
+
+function initBudgetAdmin() {
+    const open = bgEl('btn-budget-target');
+    if (open) open.addEventListener('click', bgOpen);
+    const close = () => { bgEl('budget-modal').style.display = 'none'; };
+    bgEl('btn-close-budget').addEventListener('click', close);
+    bgEl('budget-modal').addEventListener('mousedown', e => { if (e.target === bgEl('budget-modal')) close(); });
+    ['bg-year', 'bg-month'].forEach(id => bgEl(id).addEventListener('change', () => { bgMsg(''); bgRenderTargets(); }));
+    bgEl('bg-table').addEventListener('input', bgSumTotals);
+    bgEl('bg-update').addEventListener('click', bgUpdate);
+    bgEl('bg-fill-counter').addEventListener('click', () => {
+        document.querySelectorAll('#bg-table .bg-input[data-k="ow"]').forEach(i => {
+            const c = document.querySelector(`#bg-table .bg-input[data-k="counter"][data-b="${i.dataset.b.replace(/"/g, '\\"')}"]`);
+            const v = parseFloat(i.value);
+            if (c && isFinite(v)) c.value = (Math.round(v * 25) / 100).toFixed(2);
+        });
+        bgSumTotals();
+    });
+    bgEl('bg-months').addEventListener('click', e => {
+        const pick = e.target.closest('.bg-pick');
+        if (pick) { e.preventDefault(); const m = pick.dataset.m; bgEl('bg-year').value = m.slice(0, 4); bgEl('bg-month').value = m.slice(5, 7); bgMsg(''); bgRenderTargets(); return; }
+        const b = e.target.closest('button[data-act]');
+        if (!b) return;
+        if (b.dataset.act === 'lock') bgLock(b.dataset.m); else bgDelete(b.dataset.m);
+    });
 }
 
 function initMonthlyTarget() {
     document.querySelectorAll('#mt-metric-seg button').forEach(b => {
         b.addEventListener('click', () => { mtMetric = b.dataset.m; renderMonthlyTarget(); });
     });
-    const sel = document.getElementById('mt-month');
-    if (sel) sel.addEventListener('change', () => { mtMonth = sel.value; renderMonthlyTarget(); });
+    const ysel = document.getElementById('mt-year'), msel = document.getElementById('mt-month');
+    if (msel) msel.addEventListener('change', () => { mtMonth = msel.value; renderMonthlyTarget(); });
+    if (ysel) ysel.addEventListener('change', () => {
+        const inYear = mtAllMonths().filter(m => m.startsWith(ysel.value));
+        const active = mtActiveMonth();
+        mtMonth = inYear.includes(active) ? active : (inYear[inYear.length - 1] || mtMonth);
+        renderMonthlyTarget();
+    });
 
     [['repair-file-input', 'repair', 'btn-upload-repair', 'Repair Revenue Uploaded'],
      ['counter-file-input', 'counter', 'btn-upload-counter', 'Counter Sale Uploaded']].forEach(([inputId, type, btnId, label]) => {
@@ -686,6 +1010,7 @@ function initMonthlyTarget() {
             if (await loadRevenueFile(file, type, true)) highlightUploadButton(btnId, label);
         });
     });
+    initBudgetAdmin();
 }
 
 document.addEventListener('DOMContentLoaded', initMonthlyTarget);

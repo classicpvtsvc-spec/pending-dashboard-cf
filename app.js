@@ -2598,7 +2598,7 @@ function buildOutlookDraftEml(images) {
    ========================================================================== */
 const CLOUD_API = '/api/data';
 const CLOUD_KEY_STORAGE = 'dashboard_admin_upload_key';
-const CLOUD_LABELS = { pending: 'Pending Jobs', registration: 'Registration', closure: 'Closure', users: 'User list', repair: 'Repair Revenue', counter: 'Counter Sale' };
+const CLOUD_LABELS = { pending: 'Pending Jobs', registration: 'Registration', closure: 'Closure', users: 'User list', repair: 'Repair Revenue', counter: 'Counter Sale', budget: 'Budget Targets' };
 const cloudInfo = { pending: null, registration: null, closure: null };
 let cloudTempNotice = '';   // shown when a non-admin uploads a temporary file
 let cloudStatusNotice = ''; // "Saving..." / error messages
@@ -2646,6 +2646,14 @@ async function loadCloudData() {
         const isAdmin = currentUser && currentUser.role === 'Admin';
         const types = ['pending'].concat(canViewDaily() ? ['registration', 'closure'] : [], hasPerm('monthTarget') ? ['repair', 'counter'] : []);
         let pendingLoaded = false;
+
+        // Monthly budget targets + locked months (loaded first, so the right month is selected when the data arrives)
+        if (hasPerm('monthTarget') && info.budget && typeof mtLoadBudgetText === 'function') {
+            try {
+                const bRes = await fetch(`${CLOUD_API}?type=budget`, { cache: 'no-store' });
+                if (bRes.ok) mtLoadBudgetText(await bRes.text());
+            } catch (e) { console.warn('Budget data not loaded:', e); }
+        }
 
         for (const t of types) {
             if (!info[t]) continue;
