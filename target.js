@@ -32,7 +32,7 @@ const MONTHLY_TARGETS = {
 const TARGET_HOLIDAYS = [];
 
 /* Minimum achievement and grades (from the target e-mail) */
-const MT_MIN_PCT = 90;   // below this = minimum not met; 90-90.9 = Grade C; 91-95.9 = Grade B; 96+ = Grade A
+const MT_MIN_PCT = 80;   // below this = minimum not met; 80-80.9 = Grade C; 81-90.9 = Grade B; 91+ = Grade A
 
 /* ---- 2. DATA CODES ---- */
 const BRANCH_CODE_MAP = {
@@ -440,8 +440,8 @@ const mtDM = key => key ? `${key.slice(8, 10)}/${key.slice(5, 7)}` : '-';
 
 function mtGrade(p) {
     if (p === null) return { cls: 'none', label: '-' };
-    if (p >= 96) return { cls: 'a', label: 'Grade A' };
-    if (p >= 91) return { cls: 'b', label: 'Grade B' };
+    if (p >= 91) return { cls: 'a', label: 'Grade A' };
+    if (p >= 81) return { cls: 'b', label: 'Grade B' };
     if (p >= MT_MIN_PCT) return { cls: 'c', label: 'Grade C' };
     return { cls: 'low', label: 'Below ' + MT_MIN_PCT + '%' };
 }
