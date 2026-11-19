@@ -2,6 +2,21 @@
  * Sentinel Daily Pending Jobs Dashboard
  */
 
+// Graph hover popups (tooltips): very transparent so the graph behind stays visible.
+// Set once here; applies to every Chart.js graph (this file and target.js).
+if (typeof Chart !== 'undefined') {
+    const tt = Chart.defaults.plugins.tooltip;
+    tt.backgroundColor = 'rgba(255, 255, 255, 0.18)';
+    tt.titleColor = '#0f172a';
+    tt.bodyColor = '#0f172a';
+    tt.footerColor = '#0f172a';
+    tt.borderColor = 'rgba(15, 23, 42, 0.35)';
+    tt.borderWidth = 1;
+    tt.titleFont = { weight: '700' };
+    tt.bodyFont = { weight: '600' };
+    tt.boxPadding = 3;
+}
+
 // User Database Configuration
 let USERS = [
     { username: 'Arun', name: 'Arun', password: '1234', role: 'Admin', branch: 'ALL' },
@@ -477,8 +492,21 @@ function fmtAvg(v) {
 }
 
 /**
+ * Day weight used ONLY for the "Average" divisor (never for the counts themselves):
+ *   Friday = 0 (day is not counted), Saturday = 0.5 (half a day), any other day = 1.
+ * Any data on a Friday / Saturday is still added to the total; only the day count changes.
+ */
+function avgDayWeight(isoDateStr) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(isoDateStr));
+    if (!m) return 1;
+    const dow = new Date(+m[1], +m[2] - 1, +m[3]).getDay();   // local date: no timezone shift
+    return dow === 5 ? 0 : (dow === 6 ? 0.5 : 1);
+}
+
+/**
  * Daily matrix table (rows x dates) with a trailing "Average" column
- * (row total / number of dates shown). Rows are sorted by Average, high to low.
+ * (row total / weighted number of dates shown: Friday not counted, Saturday counted as half).
+ * Rows are sorted by Average, high to low.
  * rowKey: which field of each record is the row (branch / brand / tech).
  */
 function renderMatrixTable(dataset, tableContainerId, rowLabel = 'Branch', rowKey = 'branch', truncateNames = false, labelKey = null) {
@@ -513,7 +541,10 @@ function renderMatrixTable(dataset, tableContainerId, rowLabel = 'Branch', rowKe
         }
     });
 
-    const avgOf = row => dates.length ? dates.reduce((sum, d) => sum + matrix[row][d], 0) / dates.length : 0;
+    // Average = total / weighted day count (Friday = 0, Saturday = 0.5, other days = 1).
+    // If only Fridays are shown the weighted count would be 0, so fall back to the plain date count.
+    const weightedDays = dates.reduce((sum, d) => sum + avgDayWeight(d), 0) || dates.length;
+    const avgOf = row => weightedDays ? dates.reduce((sum, d) => sum + matrix[row][d], 0) / weightedDays : 0;
     const avgs = {};
     rows.forEach(r => { avgs[r] = avgOf(r); });
 
@@ -550,7 +581,7 @@ function renderMatrixTable(dataset, tableContainerId, rowLabel = 'Branch', rowKe
         dates.forEach(d => {
             tbodyHtml += `<td class="text-center bold">${totals[d] > 0 ? totals[d] : ''}</td>`;
         });
-        tbodyHtml += `<td class="text-center bold avg-col">${fmtAvg(grand / dates.length)}</td></tr>`;
+        tbodyHtml += `<td class="text-center bold avg-col">${fmtAvg(grand / weightedDays)}</td></tr>`;
     }
 
     tbodyHtml += '</tbody>';
