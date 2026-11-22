@@ -1,0 +1,89 @@
+/* ==========================================================================
+   OVERTIME MODULE (popup). Only affects elements created by overtime.js (#ot-modal and #btn-overtime*).
+   ========================================================================== */
+.ot-overlay { z-index: 1300; }
+.ot-card { max-width: 1320px; width: 96vw; max-height: 92vh; }
+.ot-body { padding: 1rem 1.25rem 1.25rem; }
+.ot-loading { padding: 2rem; text-align: center; color: var(--text-muted); font-weight: 600; }
+
+/* ---- form ---- */
+.ot-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.8rem 1rem; }
+.ot-field { display: flex; flex-direction: column; gap: 4px; margin: 0; }
+.ot-field > span { font-size: 0.72rem; font-weight: 700; color: var(--slate-600); letter-spacing: 0.02em; }
+.ot-field input, .ot-field select {
+    font-family: inherit; font-size: 0.88rem; color: var(--text-dark);
+    padding: 0.5rem 0.65rem; border: 1px solid var(--slate-300); border-radius: var(--radius-sm);
+    background: #fff; width: 100%; min-height: 38px; box-sizing: border-box;
+}
+.ot-field input:focus, .ot-field select:focus { outline: 2px solid var(--accent-emerald); outline-offset: 0; border-color: var(--accent-emerald); }
+.ot-field select:disabled { background: var(--surface-soft); color: var(--text-dark); opacity: 1; font-weight: 700; }
+.ot-wide { grid-column: span 3; }
+.ot-status-box { background: var(--surface-soft) !important; font-weight: 700; color: var(--slate-600) !important; cursor: default; }
+.ot-status-box.st-submitted { color: var(--primary-green) !important; background: var(--green-soft) !important; border-color: var(--accent-emerald) !important; }
+.ot-status-box:not(.st-submitted):not([class*="st-"]) { font-weight: 500; }
+
+.ot-actions { display: flex; align-items: center; gap: 0.6rem; margin-top: 1rem; flex-wrap: wrap; }
+.ot-btn {
+    font-family: inherit; font-size: 0.85rem; font-weight: 700; cursor: pointer;
+    padding: 0.5rem 1.1rem; border-radius: var(--radius-sm);
+    border: 1px solid var(--slate-300); background: #fff; color: var(--slate-700);
+}
+.ot-btn:hover { background: var(--slate-100); }
+.ot-btn.primary { background: var(--primary-green); border-color: var(--primary-green); color: #fff; }
+.ot-btn.primary:hover { background: var(--primary-green-hover); }
+.ot-btn.small { padding: 0.25rem 0.7rem; font-size: 0.78rem; }
+.ot-btn:disabled { opacity: 0.6; cursor: wait; }
+.ot-link { background: none; border: 0; padding: 0; color: var(--primary-green); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
+.ot-msg { font-size: 0.84rem; font-weight: 700; }
+.ot-msg.ok { color: var(--primary-green); }
+.ot-msg.err { color: var(--danger-red); }
+
+.ot-banner { padding: 0.55rem 0.8rem; border-radius: var(--radius-sm); font-size: 0.85rem; font-weight: 600; margin-bottom: 0.8rem; }
+.ot-banner.err { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+.ot-banner.info { background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; }
+.ot-form.editing { outline: 2px dashed #f59e0b; outline-offset: 6px; border-radius: var(--radius-sm); }
+
+.ot-sub { margin: 1.4rem 0 0.5rem; font-size: 0.95rem; color: var(--text-dark); }
+.ot-count { font-weight: 600; color: var(--text-muted); }
+
+/* ---- tables ---- */
+.ot-table-wrap { overflow: auto; max-height: 340px; border: 1px solid var(--card-border); border-radius: var(--radius-sm); }
+.ot-table-wrap.tall { max-height: calc(92vh - 260px); }
+.ot-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; background: #fff; }
+.ot-table th {
+    position: sticky; top: 0; z-index: 1; background: var(--slate-800); color: #fff;
+    padding: 0.4rem 0.35rem; text-align: center; font-weight: 700; font-size: 0.72rem; line-height: 1.2; white-space: normal; border: 1px solid var(--slate-700);
+}
+.ot-table td { padding: 0.35rem 0.4rem; border: 1px solid var(--card-border); text-align: center; color: var(--text-dark); }
+.ot-table tbody tr:nth-child(even) { background: var(--surface-soft); }
+.ot-table td.ot-left { text-align: left; }
+.ot-table td.ot-nowrap { white-space: nowrap; }
+.ot-table td.ot-remarks { min-width: 110px; max-width: 220px; word-break: break-word; }
+.ot-table td.ot-amount { font-weight: 800; text-align: right; color: var(--primary-green); }
+.ot-table td.ot-empty { padding: 1.4rem; color: var(--text-muted); font-weight: 600; }
+.ot-table tr.ot-total td { background: var(--green-soft); font-weight: 800; position: sticky; bottom: 0; }
+.ot-table tr.ot-row-editing { background: #fef3c7 !important; }
+.ot-lock { cursor: help; }
+
+.ot-badge { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; font-size: 0.74rem; font-weight: 800; white-space: nowrap; background: var(--slate-100); color: var(--slate-600); }
+.ot-badge.st-submitted, .ot-status-sel.st-submitted { background: #dbeafe; color: #1e40af; }
+.ot-badge.st-submitted-to-hr, .ot-status-sel.st-submitted-to-hr { background: #d1fae5; color: #065f46; }
+.ot-badge.st-rejected, .ot-status-sel.st-rejected { background: #fee2e2; color: #991b1b; }
+.ot-badge.st-reviewing, .ot-status-sel.st-reviewing { background: #fef3c7; color: #92400e; }
+.ot-status-sel { font-family: inherit; font-size: 0.8rem; font-weight: 700; padding: 0.25rem 0.4rem; border-radius: var(--radius-sm); border: 1px solid var(--slate-300); cursor: pointer; }
+
+/* ---- admin toolbar ---- */
+.ot-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.7rem; margin-bottom: 0.6rem; }
+.ot-field.inline { min-width: 130px; }
+.ot-spacer { flex: 1; }
+.ot-summary { font-size: 0.8rem; color: var(--text-muted); font-weight: 600; margin-bottom: 0.4rem; display: inline-block; margin-right: 1rem; }
+
+/* ---- top-bar button ---- */
+#btn-overtime { white-space: nowrap; }
+
+@media (max-width: 1000px) { .ot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ot-wide { grid-column: span 2; } }
+@media (max-width: 560px) {
+    .ot-grid { grid-template-columns: 1fr; } .ot-wide { grid-column: span 1; }
+    .ot-body { padding: 0.8rem; }
+    .ot-card { width: 100vw; max-height: 96vh; }
+}
