@@ -199,14 +199,13 @@ async function otHandle(store, users, p) {
 
   // Read the shards this user may see. `over` = shards just written in this request (so the reply is never stale).
   const readScope = async over => {
-    let keys = role === "Supervisor" ? [otBranchKey(myBranch)] : await store.listKeys();
+    let keys = role === "Supervisor" ? [otBranchKey(myBranch)] : await store.listKeys();   // Admin + Manager read every branch (Manager is view-only; edit/status rules below still apply)
     keys = Array.from(new Set(keys.concat(Object.keys(over))));
     let all = [];
     for (const k of keys) {
       const arr = over[k] !== undefined ? over[k] : await store.getShard(k);
       all = all.concat(arr);
     }
-    if (role === "Manager") all = all.filter(e => e.createdBy === user.username);
     all.sort((a, b) => String(b.otDate).localeCompare(String(a.otDate)) || String(b.createdAt).localeCompare(String(a.createdAt)));
     return all;
   };
@@ -237,7 +236,6 @@ async function otHandle(store, users, p) {
 
   /* ---------- Supervisor / Manager: add or edit ---------- */
   if (action === "save") {
-    if (role === "Admin") return fail(403, "The Admin reviews entries in the Overtime sheet; entries are submitted by Supervisors and Managers.");
     const e = p.entry || {};
     const str = (v, max) => String(v == null ? "" : v).trim().slice(0, max);
     const num = (v, label, max, integer) => {

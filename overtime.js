@@ -49,6 +49,8 @@
     let cloudTechsTried = false;
     let loadError = '';
     const adminFilter = { branch: '', status: '', from: '', to: '' };
+    let viewReadOnly = false;        // true = Manager's "All Overtime Data" tab (no status change)
+    const pane = () => $('ot-pane') || $('ot-body');
 
     /* ==========================================================================
        SERVER CALLS
@@ -170,7 +172,7 @@
     }
 
     async function openOvertime() {
-        if (!user() || (!isAdmin() && !canSubmit())) return;
+        if (!user() || (!isAdmin() && !canSubmit())) return;   // Admin, Manager, Supervisor
         const m = ensureModal();
         editing = null;
         $('ot-title').textContent = isAdmin() ? 'Overtime - Admin Sheet' : 'Overtime - Data Collection';
@@ -181,7 +183,8 @@
         const [listRes] = await Promise.all([api('list').catch(e => ({ error: e.message })), loadCloudTechs()]);
         if (listRes.error) loadError = listRes.error;
         else state = { entries: listRes.entries || [], people: listRes.people || {} };
-        if (isAdmin()) renderAdmin(); else renderUser();
+        if (user().role !== 'Supervisor') renderManager('entry');   // Admin + Manager: Data Entry tab + sheet tab
+        else renderUser();
     }
 
     /* ==========================================================================
@@ -191,7 +194,7 @@
         const u = user();
         const isSup = u.role === 'Supervisor';
         const branches = branchList();
-        $('ot-body').innerHTML = `
+        pane().innerHTML = `
             ${loadError ? `<div class="ot-banner err">${esc(loadError)}</div>` : ''}
             <div id="ot-edit-banner" class="ot-banner info" style="display:none"></div>
             <form id="ot-form" class="ot-form" autocomplete="off" novalidate>
@@ -366,7 +369,7 @@
 
     function renderUserTable() {
         const t = $('ot-user-table'); if (!t) return;
-        const rows = state.entries;
+        const rows = user().role !== 'Supervisor' ? state.entries.filter(e => e.createdBy === user().username) : state.entries;
         $('ot-count').textContent = rows.length ? `(${rows.length})` : '';
         const head = ['Branch', 'CSS ID', 'Employee ID', 'Designation', 'Employee Name', 'Job Type', 'OT Date:', 'TTL ATTEND Qty', 'TTL Closed Qty', 'TTL OT Hrs', 'Basic Salary', 'Any Remarks', 'Status', ''];
         let h = '<thead><tr>' + head.map(x => `<th>${esc(x)}</th>`).join('') + '</tr></thead><tbody>';
@@ -409,6 +412,24 @@
     }
 
     /* ==========================================================================
+       MANAGER VIEW: tab 1 = own data entry (same form as above), tab 2 = all submitted data (view + Export only)
+       ========================================================================== */
+    function renderManager(tab) {
+        editing = null;
+        $('ot-title').textContent = isAdmin() ? 'Overtime - Admin' : 'Overtime';
+        $('ot-body').innerHTML = `
+            <div class="ot-tabs">
+                <button type="button" class="ot-tab${tab === 'entry' ? ' active' : ''}" data-tab="entry">Data Entry</button>
+                <button type="button" class="ot-tab${tab === 'all' ? ' active' : ''}" data-tab="all">${isAdmin() ? 'Overtime Sheet' : 'All Overtime Data (view only)'}</button>
+            </div>
+            <div id="ot-pane"></div>`;
+        $('ot-body').querySelectorAll('.ot-tab').forEach(b => b.addEventListener('click', () => {
+            const t = b.getAttribute('data-tab'); if (t !== tab) renderManager(t);
+        }));
+        if (tab === 'all') renderAdmin(!isAdmin()); else renderUser();   // Manager: read-only; Admin: status dropdowns
+    }
+
+    /* ==========================================================================
        ADMIN VIEW  (Overtime sheet)
        ========================================================================== */
     function adminRows() {
@@ -422,11 +443,12 @@
 
     const ADMIN_HEAD = ['Branch', 'CSS ID', 'Employee ID', 'Designation', 'Employee Name', 'Job Type', 'OT Date:', 'TTL ATTEND Qty', 'TTL Closed Qty', 'TTL OT Hrs', 'Basic Salary', 'Amount', 'Any Remarks', 'Status'];
 
-    function renderAdmin() {
+    function renderAdmin(readOnly) {
+        viewReadOnly = !!readOnly;
         const branches = [];
         state.entries.forEach(e => { if (!branches.some(b => lc(b) === lc(e.branch))) branches.push(e.branch); });
         branches.sort((a, b) => a.localeCompare(b));
-        $('ot-body').innerHTML = `
+        pane().innerHTML = `
             ${loadError ? `<div class="ot-banner err">${esc(loadError)}</div>` : ''}
             <div class="ot-toolbar">
                 <label class="ot-field inline"><span>Branch</span><select id="ot-f-branch">${optionList(branches, adminFilter.branch, 'All')}</select></label>
@@ -444,10 +466,10 @@
 
         const bind = (id, key) => $(id).addEventListener('change', () => { adminFilter[key] = $(id).value; renderAdminTable(); });
         bind('ot-f-branch', 'branch'); bind('ot-f-status', 'status'); bind('ot-f-from', 'from'); bind('ot-f-to', 'to');
-        $('ot-f-reset').addEventListener('click', () => { adminFilter.branch = adminFilter.status = adminFilter.from = adminFilter.to = ''; renderAdmin(); });
+        $('ot-f-reset').addEventListener('click', () => { adminFilter.branch = adminFilter.status = adminFilter.from = adminFilter.to = ''; renderAdmin(viewReadOnly); });
         $('ot-refresh').addEventListener('click', async () => {
             setMsg('Refreshing...', '');
-            try { const d = await api('list'); state = { entries: d.entries || [], people: d.people || {} }; renderAdmin(); }
+            try { const d = await api('list'); state = { entries: d.entries || [], people: d.people || {} }; renderAdmin(viewReadOnly); }
             catch (e) { setMsg(e.message, 'err'); }
         });
         $('ot-export').addEventListener('click', exportExcel);
@@ -468,7 +490,7 @@
                 <td>${esc(e.attendQty)}</td><td>${esc(e.closedQty)}</td><td>${esc(e.otHrs)}</td><td>${esc(fmtNum(e.basicSalary))}</td>
                 <td class="ot-amount">${esc(fmtNum(amt, 2))}</td>
                 <td class="ot-left ot-remarks">${esc(e.remarks)}</td>
-                <td><select class="ot-status-sel st-${esc(lc(e.status).replace(/[^a-z]+/g, '-'))}" data-id="${esc(e.id)}" data-branch="${esc(e.branch)}" data-old="${esc(e.status)}">${optionList(STATUSES, e.status)}</select></td></tr>`;
+                <td>${viewReadOnly ? `<span class="ot-badge st-${esc(lc(e.status).replace(/[^a-z]+/g, '-'))}">${esc(e.status)}</span>` : `<select class="ot-status-sel st-${esc(lc(e.status).replace(/[^a-z]+/g, '-'))}" data-id="${esc(e.id)}" data-branch="${esc(e.branch)}" data-old="${esc(e.status)}">${optionList(STATUSES, e.status)}</select>`}</td></tr>`;
         });
         if (rows.length) h += `<tr class="ot-total"><td colspan="11" class="ot-left">Total (${rows.length} entries)</td><td class="ot-amount">${esc(fmtNum(total, 2))}</td><td colspan="2"></td></tr>`;
         t.innerHTML = h + '</tbody>';
@@ -521,7 +543,7 @@
        ========================================================================== */
     function syncButtons() {
         const top = $('btn-overtime'), adm = $('btn-overtime-admin');
-        if (top) top.style.display = canSubmit() ? '' : 'none';
+        if (top) top.style.display = canSubmit() ? '' : 'none';   // top bar: Supervisor + Manager only (Admin uses the Admin menu)
         if (adm) adm.style.display = isAdmin() ? '' : 'none';
         if (!user()) closeOvertime();
     }
