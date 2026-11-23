@@ -369,6 +369,7 @@
 
     function renderUserTable() {
         const t = $('ot-user-table'); if (!t) return;
+        syncPending();
         const rows = user().role !== 'Supervisor' ? state.entries.filter(e => e.createdBy === user().username) : state.entries;
         $('ot-count').textContent = rows.length ? `(${rows.length})` : '';
         const head = ['Branch', 'CSS ID', 'Employee ID', 'Designation', 'Employee Name', 'Job Type', 'OT Date:', 'TTL ATTEND Qty', 'TTL Closed Qty', 'TTL OT Hrs', 'Basic Salary', 'Any Remarks', 'Status', ''];
@@ -426,7 +427,8 @@
         $('ot-body').querySelectorAll('.ot-tab').forEach(b => b.addEventListener('click', () => {
             const t = b.getAttribute('data-tab'); if (t !== tab) renderManager(t);
         }));
-        if (tab === 'all') renderAdmin(!isAdmin()); else renderUser();   // Manager: read-only; Admin: status dropdowns
+        if (tab === 'all') renderAdmin(!isAdmin()); else renderUser();
+        applyBadge();   // Manager: read-only; Admin: status dropdowns
     }
 
     /* ==========================================================================
@@ -480,21 +482,25 @@
         const t = $('ot-admin-table'); if (!t) return;
         const rows = adminRows();
         let total = 0;
-        let h = '<thead><tr>' + ADMIN_HEAD.map(x => `<th>${esc(x)}</th>`).join('') + '</tr></thead><tbody>';
+        // fixed column widths (%) so the whole sheet fits the popup without scrolling; Employee Name is the narrow one
+        const widths = [6, 5, 7, 9, 9, 8, 8, 6, 6, 5, 6, 6, 9, 10];
+        let h = '<colgroup>' + widths.map(w => `<col style="width:${w}%">`).join('') + '</colgroup>'
+            + '<thead><tr>' + ADMIN_HEAD.map(x => `<th>${esc(x)}</th>`).join('') + '</tr></thead><tbody>';
         if (!rows.length) h += `<tr><td colspan="${ADMIN_HEAD.length}" class="ot-empty">No overtime entries${state.entries.length ? ' for the selected filters' : ' submitted yet'}.</td></tr>`;
         rows.forEach(e => {
             const amt = otAmount(e); total += amt;
             h += `<tr>
                 <td>${esc(e.branch)}</td><td>${esc(e.cssId)}</td><td>${esc(e.employeeId)}</td><td>${esc(e.designation)}</td>
-                <td class="ot-left">${esc(e.employeeName)}</td><td>${esc(e.jobType)}</td><td class="ot-nowrap">${esc(fmtDate(e.otDate))}</td>
+                <td class="ot-left ot-name">${esc(e.employeeName)}</td><td>${esc(e.jobType)}</td><td class="ot-nowrap">${esc(fmtDate(e.otDate))}</td>
                 <td>${esc(e.attendQty)}</td><td>${esc(e.closedQty)}</td><td>${esc(e.otHrs)}</td><td>${esc(fmtNum(e.basicSalary))}</td>
                 <td class="ot-amount">${esc(fmtNum(amt, 2))}</td>
-                <td class="ot-left ot-remarks">${esc(e.remarks)}</td>
+                <td class="ot-left ot-remarks"><div class="ot-rem">${esc(e.remarks)}</div></td>
                 <td>${viewReadOnly ? `<span class="ot-badge st-${esc(lc(e.status).replace(/[^a-z]+/g, '-'))}">${esc(e.status)}</span>` : `<select class="ot-status-sel st-${esc(lc(e.status).replace(/[^a-z]+/g, '-'))}" data-id="${esc(e.id)}" data-branch="${esc(e.branch)}" data-old="${esc(e.status)}">${optionList(STATUSES, e.status)}</select>`}</td></tr>`;
         });
         if (rows.length) h += `<tr class="ot-total"><td colspan="11" class="ot-left">Total (${rows.length} entries)</td><td class="ot-amount">${esc(fmtNum(total, 2))}</td><td colspan="2"></td></tr>`;
         t.innerHTML = h + '</tbody>';
         $('ot-summary').textContent = `${rows.length} of ${state.entries.length} entries shown`;
+        syncPending();
         t.querySelectorAll('.ot-status-sel').forEach(sel => sel.addEventListener('change', () => changeStatus(sel)));
     }
 
@@ -541,11 +547,50 @@
        TOP-BAR BUTTON / ADMIN MENU ITEM
        Shown after login: Supervisor + Manager -> top bar button; Admin -> item inside the Admin menu.
        ========================================================================== */
+    /* ---------- Admin notification: red mark while any entry is still in status "Submitted" ---------- */
+    let pendingCount = 0;
+
+    function setBadge(el, n) {
+        if (!el) return;
+        let b = el.querySelector(':scope > .ot-notify');
+        if (!n) { if (b) b.remove(); return; }
+        if (!b) { b = document.createElement('span'); b.className = 'ot-notify'; el.appendChild(b); }
+        b.textContent = n > 99 ? '99+' : String(n);
+        b.title = n + ' Overtime ' + (n === 1 ? 'entry is' : 'entries are') + ' waiting for review (status: Submitted)';
+    }
+    function applyBadge() {
+        const n = isAdmin() ? pendingCount : 0;
+        setBadge($('btn-admin-menu'), n);
+        setBadge($('btn-overtime-admin'), n);
+        setBadge(document.querySelector('#ot-modal .ot-tab[data-tab="all"]'), n);
+    }
+    function syncPending() {
+        if (!isAdmin()) return;
+        pendingCount = state.entries.filter(e => e.status === 'Submitted').length;
+        applyBadge();
+    }
+    async function pollPending() {
+        if (!isAdmin()) return;
+        try { const d = await api('list'); pendingCount = (d.entries || []).filter(e => e.status === 'Submitted').length; applyBadge(); }
+        catch (e) { /* offline / users not saved yet: keep the last count */ }
+    }
+    // Checked once per page load / refresh (no timer) to keep Cloudflare free-plan usage low.
+    // The count also refreshes whenever the Admin opens the Overtime popup, changes a status, or clicks Refresh.
+    let checkedFor = null;
+    function syncPolling() {
+        if (isAdmin()) {
+            if (checkedFor !== user().username) { checkedFor = user().username; pollPending(); }
+        } else {
+            checkedFor = null; pendingCount = 0; applyBadge();
+        }
+    }
+
     function syncButtons() {
         const top = $('btn-overtime'), adm = $('btn-overtime-admin');
         if (top) top.style.display = canSubmit() ? '' : 'none';   // top bar: Supervisor + Manager only (Admin uses the Admin menu)
         if (adm) adm.style.display = isAdmin() ? '' : 'none';
         if (!user()) closeOvertime();
+        syncPolling();
     }
 
     function init() {

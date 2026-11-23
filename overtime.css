@@ -93,3 +93,36 @@
 .ot-tab { font-family: inherit; font-size: 0.86rem; font-weight: 700; padding: 0.5rem 1rem; border: 0; background: none; color: var(--slate-600); cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; }
 .ot-tab:hover { color: var(--text-dark); }
 .ot-tab.active { color: var(--primary-green); border-bottom-color: var(--primary-green); }
+
+/* ==========================================================================
+   Admin sheet: fits the popup (no sideways scrolling), narrow Employee Name,
+   Remarks on one line with the full text shown while the mouse is over the cell
+   ========================================================================== */
+#ot-admin-table { table-layout: fixed; min-width: 980px; }
+#ot-admin-table td { overflow-wrap: break-word; word-break: normal; white-space: normal; }
+#ot-admin-table td.ot-nowrap { white-space: nowrap; }
+#ot-admin-table th { overflow-wrap: normal; word-break: normal; font-size: 0.68rem; padding: 0.4rem 0.2rem; }
+#ot-admin-table td.ot-name { line-height: 1.25; }
+#ot-admin-table td.ot-remarks { position: relative; min-width: 0; max-width: none; }
+#ot-admin-table .ot-rem { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#ot-admin-table td.ot-remarks:hover .ot-rem {
+    position: absolute; right: 0; top: 0; z-index: 6;
+    width: max-content; min-width: 100%; max-width: 360px; box-sizing: border-box;
+    white-space: normal; overflow: visible; overflow-wrap: anywhere; text-overflow: clip;
+    background: #fff; border: 1px solid var(--slate-300); border-radius: var(--radius-sm);
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.25); padding: 0.35rem 0.45rem;
+}
+#ot-admin-table .ot-status-sel { width: 100%; max-width: 100%; box-sizing: border-box; }
+
+/* ---- red notification mark (Admin) ---- */
+#btn-admin-menu { position: relative; }
+.ot-notify {
+    min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: #dc2626; color: #fff; border-radius: 999px; border: 2px solid #fff;
+    font-size: 0.65rem; font-weight: 800; line-height: 1; font-family: inherit; pointer-events: auto;
+}
+#btn-admin-menu > .ot-notify { position: absolute; top: -6px; right: -6px; }
+#btn-overtime-admin > .ot-notify { margin-left: auto; position: static; }
+#btn-overtime-admin { align-items: center; }
+.ot-tab > .ot-notify { margin-left: 0.4rem; vertical-align: middle; }
