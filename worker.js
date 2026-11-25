@@ -1,3 +1,5 @@
+import { DurableObject } from "cloudflare:workers";
+
 // Cloudflare Worker: serves the dashboard files AND stores the uploaded data permanently.
 //   GET  /api/data              -> info (file name, upload time, uploader) for all 3 datasets
 //   GET  /api/data?type=pending -> the saved file itself (also: registration, closure)
@@ -23,6 +25,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === "/api/data") return handleData(request, env);
     if (url.pathname === "/api/overtime") return handleOvertime(request, env);
+    if (url.pathname === "/api/chat") return handleChat(request, env);
     return env.ASSETS.fetch(request); // everything else = your website files
   }
 };
@@ -295,4 +298,173 @@ async function otHandle(store, users, p) {
   }
 
   return fail(400, "Unknown action.");
+}
+
+
+/* ==========================================================================
+   CHAT: /api/chat is a WebSocket that is handed to the ChatRoom Durable Object (needs the CHAT_ROOM binding in wrangler.jsonc)
+   ========================================================================== */
+function handleChat(request, env) {
+  if (!env.CHAT_ROOM) return json({ error: "Chat is not enabled on this server" }, 503);
+  if (request.headers.get("Upgrade") !== "websocket") return json({ error: "WebSocket required" }, 426);
+  return env.CHAT_ROOM.get(env.CHAT_ROOM.idFromName("main")).fetch(request);
+}
+
+/* ==========================================================================
+   CHAT (Cloudflare Durable Object, WebSocket Hibernation API, SQLite storage)
+   - One shared room object ("main"). Connected + logged-in sockets = users who are online now.
+   - Idle connections hibernate (no duration charge); keep-alive "ping" is answered by setWebSocketAutoResponse
+     (no wake-up, no charge). Outgoing messages are free; incoming messages are billed 20:1.
+   - History is kept per pair of users (last 300 messages) in the object's own SQLite database. KV is only read
+     (1 read) to check the user's login, so the KV write/list limits are never touched.
+   Client -> server (JSON): {t:"auth",username,password} {t:"history",with} {t:"msg",to,text} {t:"read",with}
+   Server -> client (JSON): {t:"ready",me,users,unread} {t:"presence",users} {t:"history",with,msgs}
+                            {t:"msg",msg} {t:"error",error} {t:"authfail"}
+   ========================================================================== */
+export class ChatRoom extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+    const sql = ctx.storage.sql;
+    sql.exec("CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, pair TEXT NOT NULL, from_u TEXT NOT NULL, to_u TEXT NOT NULL, text TEXT NOT NULL, ts INTEGER NOT NULL)");
+    sql.exec("CREATE INDEX IF NOT EXISTS idx_messages_pair ON messages (pair, id)");
+    sql.exec("CREATE TABLE IF NOT EXISTS reads (u TEXT NOT NULL, peer TEXT NOT NULL, last_id INTEGER NOT NULL, PRIMARY KEY (u, peer))");
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+  }
+
+  async fetch(request) {
+    if (request.headers.get("Upgrade") !== "websocket") return new Response("Expected a WebSocket", { status: 426 });
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+    const now = Date.now();
+    for (const w of this.ctx.getWebSockets()) {          // drop connections that never logged in
+      const a = w.deserializeAttachment();
+      if (!a || (!a.u && now - (a.at || 0) > 30000)) { try { w.close(4000, "no login"); } catch (e) { /* already closed */ } }
+    }
+    this.ctx.acceptWebSocket(server);
+    server.serializeAttachment({ at: now });
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  /* ---------- helpers ---------- */
+  async users(force) {
+    if (!force && this._users && Date.now() - this._usersAt < 300000) return this._users;
+    let arr = [];
+    try { arr = JSON.parse((await this.env.DASH_KV.get("file:users")) || "[]"); } catch (e) { arr = []; }
+    this._users = Array.isArray(arr) ? arr : [];
+    this._usersAt = Date.now();
+    return this._users;
+  }
+  findUser(users, name) {
+    const n = String(name || "").trim().toLowerCase();
+    return users.find(u => String(u.username || "").toLowerCase() === n) || null;
+  }
+  pub(u) { return { username: u.username, name: String(u.name || u.username), role: u.role || "", branch: u.branch || "" }; }
+  pairKey(a, b) { return [String(a).toLowerCase(), String(b).toLowerCase()].sort().join("|"); }
+  send(ws, obj) { try { ws.send(JSON.stringify(obj)); } catch (e) { /* socket is closing */ } }
+  open() { return this.ctx.getWebSockets().filter(w => w.readyState === undefined || w.readyState === 1); }
+
+  onlineList(skip) {
+    const seen = new Map();
+    for (const w of this.open()) {
+      if (w === skip) continue;
+      const a = w.deserializeAttachment();
+      if (a && a.u && !seen.has(a.u)) seen.set(a.u, { username: a.u, name: a.n, role: a.r, branch: a.b });
+    }
+    return Array.from(seen.values()).sort((x, y) => x.name.localeCompare(y.name));
+  }
+  // leaving = socket that is closing (not in the list, not a recipient); joining = socket that already got "ready" (in the list, not a recipient)
+  broadcastPresence(leaving, joining) {
+    const users = this.onlineList(leaving);
+    for (const w of this.open()) {
+      if (w === leaving || w === joining) continue;
+      const a = w.deserializeAttachment();
+      if (a && a.u) this.send(w, { t: "presence", users });
+    }
+  }
+  unreadFor(me, users) {
+    const rows = this.ctx.storage.sql.exec(
+      "SELECT m.from_u AS peer, COUNT(*) AS n FROM messages m LEFT JOIN reads r ON r.u = m.to_u AND r.peer = m.from_u " +
+      "WHERE m.to_u = ? AND m.id > COALESCE(r.last_id, 0) GROUP BY m.from_u", me).toArray();
+    return rows.map(r => { const u = this.findUser(users, r.peer); return { u: r.peer, name: u ? String(u.name || u.username) : r.peer, n: r.n }; });
+  }
+  markRead(me, peer) {
+    this.ctx.storage.sql.exec(
+      "INSERT INTO reads (u, peer, last_id) VALUES (?, ?, (SELECT COALESCE(MAX(id), 0) FROM messages WHERE pair = ?)) " +
+      "ON CONFLICT (u, peer) DO UPDATE SET last_id = excluded.last_id", me, peer, this.pairKey(me, peer));
+  }
+
+  /* ---------- WebSocket events ---------- */
+  async webSocketMessage(ws, message) {
+    if (typeof message !== "string" || message.length > 4000) return;
+    let m;
+    try { m = JSON.parse(message); } catch (e) { return; }
+    if (!m || typeof m !== "object") return;
+    const att = ws.deserializeAttachment() || {};
+
+    if (m.t === "auth") {
+      let users = await this.users(false);
+      let user = this.findUser(users, m.username);
+      if (!user || user.password !== String(m.password || "")) {           // maybe the password changed: re-read the user list once
+        users = await this.users(true);
+        user = this.findUser(users, m.username);
+      }
+      if (!user || user.password !== String(m.password || "")) { this.send(ws, { t: "authfail" }); try { ws.close(4001, "login"); } catch (e) { /* closed */ } return; }
+      const p = this.pub(user);
+      ws.serializeAttachment({ u: p.username, n: p.name, r: p.role, b: p.branch, at: att.at || Date.now() });
+      this.send(ws, { t: "ready", me: p, users: this.onlineList(), unread: this.unreadFor(p.username, users) });
+      this.broadcastPresence(null, ws);
+      return;
+    }
+
+    if (!att.u) { this.send(ws, { t: "authfail" }); try { ws.close(4001, "login"); } catch (e) { /* closed */ } return; }
+
+    // simple flood guard: max 20 requests per 10 seconds per connection
+    const now = Date.now();
+    const rl = att.rl && now - att.rl[0] < 10000 ? att.rl : [now, 0];
+    rl[1]++;
+    ws.serializeAttachment(Object.assign({}, att, { rl: rl }));
+    if (rl[1] > 20) { this.send(ws, { t: "error", error: "You are sending too fast. Please wait a moment." }); return; }
+
+    const users = await this.users(false);
+    const peerUser = this.findUser(users, m.t === "msg" ? m.to : m.with);
+    if (!peerUser) { this.send(ws, { t: "error", error: "User not found." }); return; }
+    const peer = peerUser.username;
+    if (peer === att.u) return;
+
+    if (m.t === "history") {
+      const rows = this.ctx.storage.sql.exec(
+        "SELECT id, from_u, to_u, text, ts FROM messages WHERE pair = ? ORDER BY id DESC LIMIT 100", this.pairKey(att.u, peer)).toArray().reverse();
+      this.send(ws, { t: "history", with: peer, msgs: rows.map(r => ({ id: r.id, from: r.from_u, to: r.to_u, text: r.text, ts: r.ts })) });
+      this.markRead(att.u, peer);
+      return;
+    }
+
+    if (m.t === "read") { this.markRead(att.u, peer); return; }
+
+    if (m.t === "msg") {
+      const text = String(m.text == null ? "" : m.text).trim().slice(0, 500);
+      if (!text) return;
+      const key = this.pairKey(att.u, peer), ts = Date.now();
+      const id = this.ctx.storage.sql.exec(
+        "INSERT INTO messages (pair, from_u, to_u, text, ts) VALUES (?, ?, ?, ?, ?) RETURNING id", key, att.u, peer, text, ts).toArray()[0].id;
+      this.ctx.storage.sql.exec(                                            // keep the newest 300 messages per pair
+        "DELETE FROM messages WHERE pair = ? AND id <= (SELECT id FROM messages WHERE pair = ? ORDER BY id DESC LIMIT 1 OFFSET 300)", key, key);
+      const out = { t: "msg", msg: { id: id, from: att.u, to: peer, text: text, ts: ts } };
+      for (const w of this.open()) {
+        const a = w.deserializeAttachment();
+        if (a && (a.u === att.u || a.u === peer)) this.send(w, out);        // recipient + the sender's other tabs
+      }
+      return;
+    }
+  }
+
+  async webSocketClose(ws, code) {
+    const ok = code >= 1000 && code <= 4999 && ![1004, 1005, 1006, 1015].includes(code);
+    try { ws.close(ok ? code : 1000, "bye"); } catch (e) { /* already closed */ }
+    this.broadcastPresence(ws);
+  }
+  async webSocketError(ws) {
+    try { ws.close(1011, "error"); } catch (e) { /* already closed */ }
+    this.broadcastPresence(ws);
+  }
 }

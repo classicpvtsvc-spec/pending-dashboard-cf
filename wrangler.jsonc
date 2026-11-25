@@ -8,6 +8,10 @@
     "binding": "ASSETS",
     "run_worker_first": ["/api/*"]
   },
+  "durable_objects": {
+    "bindings": [{ "name": "CHAT_ROOM", "class_name": "ChatRoom" }]
+  },
+  "migrations": [{ "tag": "v1-chat", "new_sqlite_classes": ["ChatRoom"] }],
   "kv_namespaces": [
     {
       "binding": "DASH_KV",
